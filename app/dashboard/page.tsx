@@ -45,11 +45,6 @@ export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  // CÁLCULOS DOS CONTADORES
-  const totalEncontristas = encontristas.length;
-  const totalPresentes = encontristas.filter(p => p.check_in).length;
-  const totalAusentes = totalEncontristas - totalPresentes;
-
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
@@ -190,6 +185,11 @@ export default function Dashboard() {
      return statusB.prioridade - statusA.prioridade;
   });
 
+  // --- CÁLCULOS DOS CONTADORES (REINSERIDOS AQUI) ---
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
+
   return (
     <div className="min-h-screen bg-orange-50 relative">
       <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
@@ -245,9 +245,9 @@ export default function Dashboard() {
                   <th className="p-4 font-semibold">Status</th>
                   <th className="p-4 font-semibold">ID</th>
                   <th className="p-4 font-semibold">Nome</th>
+                  <th className="p-4 font-semibold text-center w-40">Check-in</th>
                   <th className="p-4 font-semibold">Responsável</th>
                   <th className="p-4 font-semibold">Alergias</th>
-                  <th className="p-4 font-semibold text-center w-40">Check-in</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -267,10 +267,7 @@ export default function Dashboard() {
                             {pessoa.nome}
                         </Link>
                       </td>
-                      <td className="p-4 text-gray-600">{pessoa.responsavel || '-'}</td>
-                      <td className="p-4">
-                        {pessoa.alergias ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"><AlertCircle size={12} /> {pessoa.alergias}</span> : <span className="text-gray-400 text-sm">-</span>}
-                      </td>
+                      
                       <td className="p-4 text-center">
                         <button 
                             onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in)}
@@ -283,6 +280,11 @@ export default function Dashboard() {
                             {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />}
                             {pessoa.check_in ? 'Presente' : 'Ausente'}
                         </button>
+                      </td>
+
+                      <td className="p-4 text-gray-600">{pessoa.responsavel || '-'}</td>
+                      <td className="p-4">
+                        {pessoa.alergias ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"><AlertCircle size={12} /> {pessoa.alergias}</span> : <span className="text-gray-400 text-sm">-</span>}
                       </td>
                     </tr>
                   )})
@@ -309,8 +311,6 @@ export default function Dashboard() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="..." /></div>
                 <div className="flex justify-end gap-3 pt-2">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                    
-                    {/* CORREÇÃO: Agora usamos o <Save /> que estava importado */}
                     <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium shadow-sm flex items-center gap-2 disabled:opacity-50">
                         {saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar</>}
                     </button>
