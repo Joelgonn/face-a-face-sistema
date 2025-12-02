@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X } from 'lucide-react';
+import { LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, UserCheck, UserX, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -44,6 +44,11 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // CÁLCULOS DOS CONTADORES
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
 
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
@@ -102,6 +107,20 @@ export default function Dashboard() {
     }
     setLoading(false);
   }, [supabase]);
+
+  const toggleCheckIn = async (id: number, currentStatus: boolean) => {
+    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
+
+    const { error } = await supabase
+        .from('encontristas')
+        .update({ check_in: !currentStatus })
+        .eq('id', id);
+
+    if (error) {
+        alert("Erro ao atualizar check-in");
+        buscarEncontristas();
+    }
+  };
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +200,31 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between">
+                <div>
+                    <p className="text-sm text-gray-500 font-medium">Total Inscritos</p>
+                    <p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p>
+                </div>
+                <div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between">
+                <div>
+                    <p className="text-sm text-green-600 font-medium">Já Chegaram</p>
+                    <p className="text-2xl font-bold text-green-700">{totalPresentes}</p>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between">
+                <div>
+                    <p className="text-sm text-red-500 font-medium">Faltam Chegar</p>
+                    <p className="text-2xl font-bold text-red-700">{totalAusentes}</p>
+                </div>
+                <div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div>
+            </div>
+        </div>
+
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
@@ -203,7 +247,7 @@ export default function Dashboard() {
                   <th className="p-4 font-semibold">Nome</th>
                   <th className="p-4 font-semibold">Responsável</th>
                   <th className="p-4 font-semibold">Alergias</th>
-                  <th className="p-4 font-semibold text-center">Ações</th>
+                  <th className="p-4 font-semibold text-center w-40">Check-in</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -228,7 +272,17 @@ export default function Dashboard() {
                         {pessoa.alergias ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"><AlertCircle size={12} /> {pessoa.alergias}</span> : <span className="text-gray-400 text-sm">-</span>}
                       </td>
                       <td className="p-4 text-center">
-                        <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-orange-600 hover:text-orange-800 font-medium text-sm hover:underline">Detalhes</Link>
+                        <button 
+                            onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm transition-all active:scale-95
+                                ${pessoa.check_in 
+                                    ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' 
+                                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200 hover:border-gray-300'
+                                }`}
+                        >
+                            {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />}
+                            {pessoa.check_in ? 'Presente' : 'Ausente'}
+                        </button>
                       </td>
                     </tr>
                   )})
@@ -255,8 +309,10 @@ export default function Dashboard() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="..." /></div>
                 <div className="flex justify-end gap-3 pt-2">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                    
+                    {/* CORREÇÃO: Agora usamos o <Save /> que estava importado */}
                     <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium shadow-sm flex items-center gap-2 disabled:opacity-50">
-                        {saving ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar</>}
+                        {saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar</>}
                     </button>
                 </div>
              </form>
