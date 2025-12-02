@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, UserCheck, UserX, Users } from 'lucide-react';
+import { LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, UserCheck, UserX, Users, Pill } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -45,7 +45,7 @@ export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  // --- CÁLCULOS DOS CONTADORES ---
+  // CÁLCULOS DOS CONTADORES
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
@@ -108,14 +108,11 @@ export default function Dashboard() {
     setLoading(false);
   }, [supabase]);
 
-  // --- CHECK-IN COM CONFIRMAÇÃO ---
   const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
     const acao = currentStatus ? "CANCELAR a presença" : "CONFIRMAR a presença";
     
-    // AQUI ESTÁ A TRAVA DE SEGURANÇA
     if (!confirm(`Tem certeza que deseja ${acao} de ${nome}?`)) return;
 
-    // Atualização Otimista
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
 
     const { error } = await supabase
@@ -202,7 +199,21 @@ export default function Dashboard() {
       <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-orange-700 flex items-center gap-2">Face a Face <span className="text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span></h1>
-          <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium"><LogOut size={18} /> Sair</button>
+          
+          <div className="flex items-center gap-4">
+            {/* BOTÃO DE MEDICAMENTOS ADICIONADO AQUI */}
+            <Link 
+                href="/dashboard/medicamentos" 
+                className="hidden md:flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100"
+            >
+                <Pill size={18} /> Medicamentos
+            </Link>
+            
+            <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors">
+                <LogOut size={18} /> Sair
+            </button>
+          </div>
+
         </div>
       </header>
 
@@ -276,7 +287,6 @@ export default function Dashboard() {
                       </td>
                       
                       <td className="p-4 text-center">
-                        {/* BOTÃO COM CONFIRMAÇÃO - PASSEI O NOME DA PESSOA */}
                         <button 
                             onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm transition-all active:scale-95
