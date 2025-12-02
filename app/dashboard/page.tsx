@@ -45,6 +45,11 @@ export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
 
+  // --- CÁLCULOS DOS CONTADORES ---
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
+
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
@@ -103,7 +108,14 @@ export default function Dashboard() {
     setLoading(false);
   }, [supabase]);
 
-  const toggleCheckIn = async (id: number, currentStatus: boolean) => {
+  // --- CHECK-IN COM CONFIRMAÇÃO ---
+  const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
+    const acao = currentStatus ? "CANCELAR a presença" : "CONFIRMAR a presença";
+    
+    // AQUI ESTÁ A TRAVA DE SEGURANÇA
+    if (!confirm(`Tem certeza que deseja ${acao} de ${nome}?`)) return;
+
+    // Atualização Otimista
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
 
     const { error } = await supabase
@@ -185,11 +197,6 @@ export default function Dashboard() {
      return statusB.prioridade - statusA.prioridade;
   });
 
-  // --- CÁLCULOS DOS CONTADORES (REINSERIDOS AQUI) ---
-  const totalEncontristas = encontristas.length;
-  const totalPresentes = encontristas.filter(p => p.check_in).length;
-  const totalAusentes = totalEncontristas - totalPresentes;
-
   return (
     <div className="min-h-screen bg-orange-50 relative">
       <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
@@ -269,8 +276,9 @@ export default function Dashboard() {
                       </td>
                       
                       <td className="p-4 text-center">
+                        {/* BOTÃO COM CONFIRMAÇÃO - PASSEI O NOME DA PESSOA */}
                         <button 
-                            onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in)}
+                            onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm transition-all active:scale-95
                                 ${pessoa.check_in 
                                     ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' 
