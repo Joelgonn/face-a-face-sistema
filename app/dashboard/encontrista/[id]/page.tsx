@@ -55,6 +55,23 @@ export default function DetalhesEncontrista() {
   const params = useParams();
   const supabase = createClient();
 
+  // --- FUNÇÃO INTELIGENTE DE ALERGIA ---
+  const verificarAlergia = (nomeRemedio: string) => {
+    if (!pessoa?.alergias) return false; // Sem alergias, tudo bem
+
+    // Normaliza para minúsculas e divide por vírgula, ponto e vírgula ou espaço
+    const alergias = pessoa.alergias.toLowerCase().split(/[,;]+/).map(s => s.trim());
+    const remedio = nomeRemedio.toLowerCase();
+
+    // Procura se alguma alergia está contida no nome do remédio
+    const conflito = alergias.find(alergia => alergia.length > 2 && remedio.includes(alergia));
+
+    if (conflito) {
+        return `⚠️ ALERTA CRÍTICO DE ALERGIA!\n\nO paciente é alérgico a "${conflito.toUpperCase()}".\nVocê está tentando usar "${nomeRemedio.toUpperCase()}".\n\nISSO PODE SER PERIGOSO. Deseja continuar mesmo assim?`;
+    }
+    return false; // Sem conflito
+  };
+
   const calcularStatus = (med: Prescricao) => {
     const ultimoRegistro = historico.find(h => h.prescricao_id === med.id);
     if (!ultimoRegistro) {
@@ -124,7 +141,6 @@ export default function DetalhesEncontrista() {
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
-  // --- FUNÇÃO PARA ABRIR O MODAL DE EDIÇÃO ---
   const abrirEdicao = () => {
     if (pessoa) {
         setEditNome(pessoa.nome);
@@ -135,7 +151,6 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  // --- FUNÇÃO PARA SALVAR A EDIÇÃO DA PESSOA ---
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -154,13 +169,21 @@ export default function DetalhesEncontrista() {
         alert("Erro ao atualizar: " + error.message);
     } else {
         setIsEditModalOpen(false);
-        carregarDados(); // Recarrega os dados na tela
+        carregarDados(); 
     }
     setSaving(false);
   };
 
+  // --- CADASTRAR REMÉDIO COM TRAVA DE ALERGIA ---
   const handleSalvarMedicacao = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 1. Verifica Alergia antes de salvar
+    const alerta = verificarAlergia(medNome);
+    if (alerta) {
+        if (!confirm(alerta)) return; // Se cancelar, aborta o salvamento
+    }
+
     setSaving(true);
     const { error } = await supabase.from('prescricoes').insert({
         encontrista_id: params.id,
@@ -183,8 +206,16 @@ export default function DetalhesEncontrista() {
     if (!error) carregarDados();
   };
 
+  // --- ADMINISTRAR COM TRAVA DE ALERGIA ---
   const handleAdministrar = async (prescricao: Prescricao) => {
-    if (!confirm(`Administrar ${prescricao.nome_medicamento}?`)) return;
+    // 1. Verifica Alergia antes de administrar
+    const alerta = verificarAlergia(prescricao.nome_medicamento);
+    if (alerta) {
+        if (!confirm(alerta)) return; // Aborta se o usuário cancelar
+    }
+
+    if (!confirm(`Confirmar a administração de "${prescricao.nome_medicamento}" agora?`)) return;
+    
     const { data: { user } } = await supabase.auth.getUser();
     await supabase.from('historico_administracao').insert({
             prescricao_id: prescricao.id,
@@ -207,7 +238,6 @@ export default function DetalhesEncontrista() {
       <div className="max-w-6xl mx-auto">
         <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-orange-600 mb-6 font-medium"><ArrowLeft className="mr-2 h-5 w-5" /> Voltar para a Lista</Link>
 
-        {/* Cartão Principal */}
         <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden mb-8">
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 flex justify-between items-start">
             <div className="flex items-center gap-4">
@@ -218,14 +248,9 @@ export default function DetalhesEncontrista() {
               </div>
             </div>
             <div className="flex gap-3 items-center">
-                {/* BOTÃO DE EDITAR DADOS */}
-                <button 
-                    onClick={abrirEdicao}
-                    className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors backdrop-blur-sm"
-                >
+                <button onClick={abrirEdicao} className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors backdrop-blur-sm">
                     <Pencil size={16} /> Editar Dados
                 </button>
-                
                 <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pessoa.check_in ? 'bg-green-500 text-white' : 'bg-white/90 text-orange-700'}`}>
                    <UserCheck size={16} /> {pessoa.check_in ? 'Check-in Realizado' : 'Aguardando Check-in'}
                 </div>
@@ -245,7 +270,6 @@ export default function DetalhesEncontrista() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Lista de Remédios */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-md border border-gray-100 p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-orange-500" /> Medicações</h2>
@@ -280,7 +304,6 @@ export default function DetalhesEncontrista() {
             </div>
           </div>
 
-          {/* Histórico */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 h-fit">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6"><History className="text-blue-500" /> Histórico</h2>
             <div className="relative border-l-2 border-blue-100 ml-3 space-y-6">
@@ -307,15 +330,15 @@ export default function DetalhesEncontrista() {
               <button onClick={() => setIsModalOpen(false)} className="text-white"><X size={24}/></button>
             </div>
             <form onSubmit={handleSalvarMedicacao} className="p-6 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" required value={medNome} onChange={e => setMedNome(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: Dipirona" autoFocus /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" required value={medNome} onChange={e => setMedNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Ex: Dipirona" autoFocus /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 500mg" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Horário</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 14:00" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 6/6h" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 6 em 6h" /></div>
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg">{saving ? '...' : 'Salvar'}</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg shadow-sm disabled:opacity-50">Salvar</button>
               </div>
             </form>
           </div>
