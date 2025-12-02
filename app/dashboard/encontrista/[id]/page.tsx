@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, Plus, X, Trash2, Clock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, Plus, X, Trash2, Clock, CheckCircle2, Pencil, Save, Loader2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -37,13 +37,20 @@ export default function DetalhesEncontrista() {
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Estados do Modal de Medicação
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  
   const [medNome, setMedNome] = useState('');
   const [medDosagem, setMedDosagem] = useState('');
   const [medPosologia, setMedPosologia] = useState('');
   const [medHorario, setMedHorario] = useState('');
+
+  // Estados do Modal de Edição de Pessoa
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editNome, setEditNome] = useState('');
+  const [editResponsavel, setEditResponsavel] = useState('');
+  const [editAlergias, setEditAlergias] = useState('');
+  const [editObservacoes, setEditObservacoes] = useState('');
 
   const params = useParams();
   const supabase = createClient();
@@ -117,6 +124,41 @@ export default function DetalhesEncontrista() {
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
+  // --- FUNÇÃO PARA ABRIR O MODAL DE EDIÇÃO ---
+  const abrirEdicao = () => {
+    if (pessoa) {
+        setEditNome(pessoa.nome);
+        setEditResponsavel(pessoa.responsavel || '');
+        setEditAlergias(pessoa.alergias || '');
+        setEditObservacoes(pessoa.observacoes || '');
+        setIsEditModalOpen(true);
+    }
+  };
+
+  // --- FUNÇÃO PARA SALVAR A EDIÇÃO DA PESSOA ---
+  const handleUpdatePessoa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    const { error } = await supabase
+        .from('encontristas')
+        .update({
+            nome: editNome,
+            responsavel: editResponsavel,
+            alergias: editAlergias,
+            observacoes: editObservacoes
+        })
+        .eq('id', params.id);
+
+    if (error) {
+        alert("Erro ao atualizar: " + error.message);
+    } else {
+        setIsEditModalOpen(false);
+        carregarDados(); // Recarrega os dados na tela
+    }
+    setSaving(false);
+  };
+
   const handleSalvarMedicacao = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -163,34 +205,47 @@ export default function DetalhesEncontrista() {
   return (
     <div className="min-h-screen bg-orange-50 p-6 relative">
       <div className="max-w-6xl mx-auto">
-        <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-orange-600 mb-6 font-medium"><ArrowLeft className="mr-2 h-5 w-5" /> Voltar</Link>
+        <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-orange-600 mb-6 font-medium"><ArrowLeft className="mr-2 h-5 w-5" /> Voltar para a Lista</Link>
 
+        {/* Cartão Principal */}
         <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden mb-8">
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 flex justify-between items-start">
             <div className="flex items-center gap-4">
               <div className="bg-white/20 p-3 rounded-full text-white"><User size={40} /></div>
               <div>
                 <h1 className="text-3xl font-bold text-white">{pessoa.nome}</h1>
-                <p className="text-orange-100 text-sm flex items-center gap-1"><Shield size={14} /> Resp: {pessoa.responsavel || '-'}</p>
+                <p className="text-orange-100 text-sm flex items-center gap-1"><Shield size={14} /> Responsável: {pessoa.responsavel || '-'}</p>
               </div>
             </div>
-            <div className={`px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 ${pessoa.check_in ? 'bg-green-500 text-white' : 'bg-white/20 text-white backdrop-blur-md'}`}>
-               <UserCheck size={16} /> {pessoa.check_in ? 'Check-in OK' : 'Aguardando'}
+            <div className="flex gap-3 items-center">
+                {/* BOTÃO DE EDITAR DADOS */}
+                <button 
+                    onClick={abrirEdicao}
+                    className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors backdrop-blur-sm"
+                >
+                    <Pencil size={16} /> Editar Dados
+                </button>
+                
+                <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pessoa.check_in ? 'bg-green-500 text-white' : 'bg-white/90 text-orange-700'}`}>
+                   <UserCheck size={16} /> {pessoa.check_in ? 'Check-in Realizado' : 'Aguardando Check-in'}
+                </div>
             </div>
           </div>
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-red-50 p-4 rounded-xl border border-red-100">
               <h3 className="text-red-800 font-bold flex items-center gap-2 mb-2"><AlertTriangle size={20} /> Alergias</h3>
-              <p className="text-red-700 font-medium">{pessoa.alergias || "Nenhuma"}</p>
+              <p className="text-red-700 font-medium">{pessoa.alergias || "Nenhuma alergia relatada."}</p>
             </div>
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
               <h3 className="text-gray-700 font-bold mb-2">Observações</h3>
-              <p className="text-gray-600 italic">{pessoa.observacoes || "-"}</p>
+              <p className="text-gray-600 italic">{pessoa.observacoes || "Sem observações adicionais."}</p>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Lista de Remédios */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-md border border-gray-100 p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-orange-500" /> Medicações</h2>
@@ -225,6 +280,7 @@ export default function DetalhesEncontrista() {
             </div>
           </div>
 
+          {/* Histórico */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 h-fit">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6"><History className="text-blue-500" /> Histórico</h2>
             <div className="relative border-l-2 border-blue-100 ml-3 space-y-6">
@@ -242,6 +298,7 @@ export default function DetalhesEncontrista() {
         </div>
       </div>
 
+      {/* MODAL DE NOVA MEDICAÇÃO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -250,16 +307,42 @@ export default function DetalhesEncontrista() {
               <button onClick={() => setIsModalOpen(false)} className="text-white"><X size={24}/></button>
             </div>
             <form onSubmit={handleSalvarMedicacao} className="p-6 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" required value={medNome} onChange={e => setMedNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Ex: Dipirona" autoFocus /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" required value={medNome} onChange={e => setMedNome(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: Dipirona" autoFocus /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: 500mg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Início</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: 14:00" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 500mg" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Horário</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 14:00" /></div>
               </div>
-              {/* CORREÇÃO AQUI: Troquei "h" por 'h' (aspas simples) */}
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia (Importante usar &apos;h&apos;)</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: 6 em 6h" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 6/6h" /></div>
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">Cancelar</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium shadow-sm disabled:opacity-50">Salvar</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg">{saving ? '...' : 'Salvar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE PESSOA */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-gray-800 px-6 py-4 flex justify-between items-center">
+              <h2 className="text-white font-bold text-lg flex items-center gap-2"><Pencil size={20}/> Editar Dados</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-white/80 hover:text-white hover:bg-gray-700 rounded-full p-1 transition-colors"><X size={24}/></button>
+            </div>
+            <form onSubmit={handleUpdatePessoa} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                <input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label><input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label><input type="text" value={editAlergias} onChange={e => setEditAlergias(e.target.value)} className="w-full px-3 py-2 border border-red-200 bg-red-50 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none text-red-900" /></div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" /></div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg flex items-center gap-2">{saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar Alterações</>}</button>
               </div>
             </form>
           </div>
