@@ -19,7 +19,7 @@ export default function GestaoMedicamentos() {
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false); // Estado de Admin
+  const [isAdmin, setIsAdmin] = useState(false);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [novoNome, setNovoNome] = useState('');
@@ -28,7 +28,7 @@ export default function GestaoMedicamentos() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
-  // Função de busca
+  // Busca dados
   const buscarMedicamentos = useCallback(async () => {
     const { data, error } = await supabase
       .from('medicamentos')
@@ -39,25 +39,26 @@ export default function GestaoMedicamentos() {
     setLoading(false);
   }, [supabase]);
 
-  // Verifica Admin e carrega dados
+  // Verifica Admin e Inicia
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        // Verifica se o e-mail é o do admin definido no .env
-        if (user && user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+        
+        // LÓGICA MULTI-ADMIN
+        const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',');
+        if (user?.email && adminList.includes(user.email)) {
             setIsAdmin(true);
         } else {
             setIsAdmin(false);
         }
+        
         buscarMedicamentos();
     };
     init();
   }, [buscarMedicamentos, supabase]);
 
-  // Função de Importar (Só funciona se for Admin)
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isAdmin) return; // Trava de segurança lógica
-
+    if (!isAdmin) return; // Segurança extra
     const file = event.target.files?.[0];
     if (!file) return;
     if (!confirm("Deseja importar a lista de medicamentos?")) return;
@@ -106,16 +107,13 @@ export default function GestaoMedicamentos() {
     reader.readAsText(file, 'UTF-8'); 
   };
 
-  // Função de Deletar (Só funciona se for Admin)
   const handleDelete = async (id: number) => {
     if (!isAdmin) { alert("Apenas administradores podem excluir."); return; }
     if (!confirm("Excluir este medicamento da base?")) return;
-    
     await supabase.from('medicamentos').delete().eq('id', id);
     buscarMedicamentos();
   };
 
-  // Função de Salvar Manual
   const handleSalvarManual = async (e: React.FormEvent) => {
     e.preventDefault();
     await supabase.from('medicamentos').insert({ nome: novoNome, dosagem: novaDosagem });
@@ -123,7 +121,6 @@ export default function GestaoMedicamentos() {
     buscarMedicamentos();
   };
 
-  // Filtro de busca
   const filteredMeds = medicamentos.filter(m => m.nome.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
@@ -192,7 +189,6 @@ export default function GestaoMedicamentos() {
         </div>
       </div>
 
-      {/* Modal Novo Medicamento */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl">

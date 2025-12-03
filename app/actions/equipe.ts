@@ -1,10 +1,11 @@
 'use server';
 
-import { createClient } from '@/app/utils/supabase/server'; // Cliente para checar quem está logado
-import { createClient as createAdminClient } from '@supabase/supabase-js'; // Cliente Admin para executar a ação
+import { createClient } from '@/app/utils/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
-// Cliente com superpoderes (Service Role) - SÓ PARA EXECUÇÃO
+// Cliente com superpoderes (Service Role) - USADO APENAS PARA EXECUÇÃO
+// Nunca exponha a SUPABASE_SERVICE_ROLE_KEY no frontend!
 const supabaseAdmin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -16,24 +17,34 @@ const supabaseAdmin = createAdminClient(
   }
 );
 
-// Função auxiliar de segurança
+// --- Função Auxiliar de Segurança (Blindagem) ---
 async function verificarPermissaoAdmin() {
+  // 1. Identifica quem está fazendo a requisição
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || user.email !== process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+  // 2. Carrega a lista de Admins permitidos
+  // Remove espaços em branco caso alguém configure "email1, email2" com espaço
+  const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '')
+    .split(',')
+    .map(email => email.trim());
+
+  // 3. Verifica se o usuário está logado e se o email dele está na lista
+  if (!user || !user.email || !adminList.includes(user.email)) {
     throw new Error("Acesso negado. Você não tem permissão de administrador.");
   }
+
   return user;
 }
 
+// --- Actions do Servidor ---
+
 export async function listarUsuarios() {
-  // Permitimos listar, mas vamos verificar logado
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
+  // Apenas admins podem ver a lista completa
+  await verificarPermissaoAdmin();
 
   const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+  
   if (error) throw error;
   return users;
 }
@@ -44,7 +55,7 @@ export async function excluirUsuario(targetUserId: string) {
 
     // TRAVA DE SEGURANÇA: Admin não pode se auto-excluir
     if (targetUserId === adminUser.id) {
-      return { success: false, message: 'Você não pode excluir o administrador principal.' };
+      return { success: false, message: 'Você não pode excluir sua própria conta de administrador.' };
     }
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
@@ -64,10 +75,11 @@ export async function alternarBloqueioUsuario(targetUserId: string, deveBloquear
 
     // TRAVA DE SEGURANÇA: Admin não pode se auto-bloquear
     if (targetUserId === adminUser.id) {
-      return { success: false, message: 'Você não pode bloquear o administrador principal.' };
+      return { success: false, message: 'Você não pode bloquear sua própria conta.' };
     }
 
-    const duracao = deveBloquear ? '876000h' : 'none'; // 100 anos ou nada
+    // Banimento de "100 anos" (876000 horas) ou 'none' para desbloquear
+    const duracao = deveBloquear ? '876000h' : 'none';
 
     const { error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
       ban_duration: duracao

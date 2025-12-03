@@ -82,9 +82,13 @@ export default function Dashboard() {
   useEffect(() => {
     const checkUserAndFetch = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+        
+        // LÓGICA MULTI-ADMIN: Verifica se o email está na lista separada por vírgulas
+        const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',');
+        if (user?.email && adminList.includes(user.email)) {
             setIsAdmin(true);
         }
+        
         await buscarEncontristas();
     };
     checkUserAndFetch();
@@ -278,7 +282,7 @@ export default function Dashboard() {
                 </Link>
             )}
             <Link href="/dashboard/medicamentos" className="flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100">
-                <Pill size={18} /> <span className="hidden md:inline">Medicamentos</span>
+                <Pill size={18} /> <span className="hidden md:inline">Meds</span>
             </Link>
             <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors ml-1">
                 <LogOut size={18} /> <span className="hidden md:inline">Sair</span>
@@ -312,51 +316,33 @@ export default function Dashboard() {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between"><div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div><div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div></div>
         </div>
 
-        {/* BARRA DE AÇÕES COMPACTA (SEARCH + BOTÕES) */}
-        <div className="flex flex-row gap-2 mb-6 h-12">
-          <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
-            </div>
+        {/* BARRA DE AÇÕES COMPACTA */}
+        <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
             <input 
                 type="text" 
-                placeholder="Buscar..." 
+                placeholder="Nome, Responsável ou ID..." 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 h-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm text-gray-900" 
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm text-gray-900" 
             />
           </div>
           
-          <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2 flex-wrap">
             {isAdmin && (
                 <>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
-                    <button 
-                        onClick={() => fileInputRef.current?.click()} 
-                        disabled={importing} 
-                        className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-3 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 transition-colors"
-                        title="Importar"
-                    >
-                        {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} 
-                        <span className="hidden md:inline">Importar</span>
+                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50 transition-colors">
+                        {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} <span className="hidden md:inline">Importar</span>
                     </button>
-                    <button 
-                        onClick={() => setIsResetModalOpen(true)} 
-                        className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-3 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm transition-colors"
-                        title="Zerar Sistema"
-                    >
-                        <Trash2 size={20} />
-                        <span className="hidden md:inline">Zerar</span>
+                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-colors">
+                        <Trash2 size={20} /> <span className="hidden md:inline">Zerar</span>
                     </button>
                 </>
             )}
-            <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="bg-orange-600 hover:bg-orange-700 text-white px-4 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
-                title="Novo Encontrista"
-            >
-                <Plus size={20} />
-                <span className="hidden md:inline">Novo</span>
+            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-md active:scale-95 transition-all">
+                <Plus size={20} /> Novo
             </button>
           </div>
         </div>
