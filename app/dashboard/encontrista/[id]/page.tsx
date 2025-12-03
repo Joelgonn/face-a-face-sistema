@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, Plus, X, Trash2, Clock, CheckCircle2, Pencil, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, Plus, X, Trash2, Clock, CheckCircle2, Pencil, Save, Loader2, ChevronDown } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
+// --- Interfaces ---
 interface Encontrista {
   id: number;
   nome: string;
@@ -31,6 +32,17 @@ interface HistoricoItem {
   prescricao: { nome_medicamento: string, dosagem: string };
 }
 
+interface BaseMedicamento {
+    id: number;
+    nome: string;
+}
+
+// --- Funções Auxiliares (fora do componente para evitar erros) ---
+const formatarHora = (isoString: string) => {
+  const data = new Date(isoString);
+  return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + " - " + data.toLocaleDateString('pt-BR');
+};
+
 export default function DetalhesEncontrista() {
   const [pessoa, setPessoa] = useState<Encontrista | null>(null);
   const [medicacoes, setMedicacoes] = useState<Prescricao[]>([]);
@@ -45,6 +57,12 @@ export default function DetalhesEncontrista() {
   const [medPosologia, setMedPosologia] = useState('');
   const [medHorario, setMedHorario] = useState('');
 
+  // Combobox States
+  const [baseMedicamentos, setBaseMedicamentos] = useState<BaseMedicamento[]>([]);
+  const [sugestoes, setSugestoes] = useState<BaseMedicamento[]>([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
   // Estados do Modal de Edição de Pessoa
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editNome, setEditNome] = useState('');
@@ -55,21 +73,15 @@ export default function DetalhesEncontrista() {
   const params = useParams();
   const supabase = createClient();
 
-  // --- FUNÇÃO INTELIGENTE DE ALERGIA ---
   const verificarAlergia = (nomeRemedio: string) => {
-    if (!pessoa?.alergias) return false; // Sem alergias, tudo bem
-
-    // Normaliza para minúsculas e divide por vírgula, ponto e vírgula ou espaço
+    if (!pessoa?.alergias) return false; 
     const alergias = pessoa.alergias.toLowerCase().split(/[,;]+/).map(s => s.trim());
     const remedio = nomeRemedio.toLowerCase();
-
-    // Procura se alguma alergia está contida no nome do remédio
     const conflito = alergias.find(alergia => alergia.length > 2 && remedio.includes(alergia));
-
     if (conflito) {
         return `⚠️ ALERTA CRÍTICO DE ALERGIA!\n\nO paciente é alérgico a "${conflito.toUpperCase()}".\nVocê está tentando usar "${nomeRemedio.toUpperCase()}".\n\nISSO PODE SER PERIGOSO. Deseja continuar mesmo assim?`;
     }
-    return false; // Sem conflito
+    return false; 
   };
 
   const calcularStatus = (med: Prescricao) => {
@@ -77,17 +89,14 @@ export default function DetalhesEncontrista() {
     if (!ultimoRegistro) {
       return { texto: `Início: ${med.horario_inicial}`, cor: "text-gray-500", bg: "bg-gray-100" };
     }
-
     const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
     if (!match) {
       return { texto: "Posologia complexa", cor: "text-blue-600", bg: "bg-blue-50" };
     }
-
     const intervaloHoras = parseInt(match[1]);
     const dataUltima = new Date(ultimoRegistro.data_hora);
     const dataProxima = new Date(dataUltima.getTime() + intervaloHoras * 60 * 60 * 1000);
     const agora = new Date();
-
     const horaFormatada = dataProxima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const diaFormatado = dataProxima.getDate() !== agora.getDate() ? `(${dataProxima.getDate()}/${dataProxima.getMonth()+1})` : '';
 
@@ -105,22 +114,10 @@ export default function DetalhesEncontrista() {
   const carregarDados = useCallback(async () => {
     if (!params.id) return;
 
-    const { data: pessoaData, error: pessoaError } = await supabase
-      .from('encontristas')
-      .select('*')
-      .eq('id', params.id)
-      .single();
+    const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', params.id).single();
+    if (pessoaData) setPessoa(pessoaData);
 
-    if (pessoaError) { 
-        alert("Encontrista não encontrado!"); 
-        return; 
-    }
-    setPessoa(pessoaData);
-
-    const { data: medData } = await supabase
-      .from('prescricoes')
-      .select('*')
-      .eq('encontrista_id', params.id);
+    const { data: medData } = await supabase.from('prescricoes').select('*').eq('encontrista_id', params.id);
     setMedicacoes(medData || []);
 
     if (medData && medData.length > 0) {
@@ -136,10 +133,43 @@ export default function DetalhesEncontrista() {
     } else {
         setHistorico([]);
     }
+
+    const { data: baseMeds } = await supabase.from('medicamentos').select('id, nome').order('nome');
+    setBaseMedicamentos(baseMeds || []);
+
     setLoading(false);
   }, [params.id, supabase]);
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
+
+  // Fecha sugestões ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setMostrarSugestoes(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [wrapperRef]);
+
+  // Lógica do Combobox
+  const handleNomeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valor = e.target.value;
+    setMedNome(valor);
+    if (valor.length > 0) {
+        const filtrados = baseMedicamentos.filter(m => m.nome.toLowerCase().includes(valor.toLowerCase()));
+        setSugestoes(filtrados);
+        setMostrarSugestoes(true);
+    } else {
+        setMostrarSugestoes(false);
+    }
+  };
+
+  const selecionarMedicamento = (nome: string) => {
+    setMedNome(nome);
+    setMostrarSugestoes(false);
+  };
 
   const abrirEdicao = () => {
     if (pessoa) {
@@ -154,35 +184,19 @@ export default function DetalhesEncontrista() {
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    
     const { error } = await supabase
         .from('encontristas')
-        .update({
-            nome: editNome,
-            responsavel: editResponsavel,
-            alergias: editAlergias,
-            observacoes: editObservacoes
-        })
+        .update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes })
         .eq('id', params.id);
 
-    if (error) {
-        alert("Erro ao atualizar: " + error.message);
-    } else {
-        setIsEditModalOpen(false);
-        carregarDados(); 
-    }
+    if (!error) { setIsEditModalOpen(false); carregarDados(); }
     setSaving(false);
   };
 
-  // --- CADASTRAR REMÉDIO COM TRAVA DE ALERGIA ---
   const handleSalvarMedicacao = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 1. Verifica Alergia antes de salvar
     const alerta = verificarAlergia(medNome);
-    if (alerta) {
-        if (!confirm(alerta)) return; // Se cancelar, aborta o salvamento
-    }
+    if (alerta && !confirm(alerta)) return;
 
     setSaving(true);
     const { error } = await supabase.from('prescricoes').insert({
@@ -196,7 +210,7 @@ export default function DetalhesEncontrista() {
       setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario('');
       setIsModalOpen(false);
       carregarDados();
-    } else { alert(error.message); }
+    }
     setSaving(false);
   };
 
@@ -206,14 +220,9 @@ export default function DetalhesEncontrista() {
     if (!error) carregarDados();
   };
 
-  // --- ADMINISTRAR COM TRAVA DE ALERGIA ---
   const handleAdministrar = async (prescricao: Prescricao) => {
-    // 1. Verifica Alergia antes de administrar
     const alerta = verificarAlergia(prescricao.nome_medicamento);
-    if (alerta) {
-        if (!confirm(alerta)) return; // Aborta se o usuário cancelar
-    }
-
+    if (alerta && !confirm(alerta)) return;
     if (!confirm(`Confirmar a administração de "${prescricao.nome_medicamento}" agora?`)) return;
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -225,12 +234,7 @@ export default function DetalhesEncontrista() {
     carregarDados();
   };
 
-  const formatarHora = (isoString: string) => {
-      const data = new Date(isoString);
-      return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + " - " + data.toLocaleDateString('pt-BR');
-  }
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600">Carregando...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2" /> Carregando...</div>;
   if (!pessoa) return null;
 
   return (
@@ -324,21 +328,55 @@ export default function DetalhesEncontrista() {
       {/* MODAL DE NOVA MEDICAÇÃO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-orange-600 px-6 py-4 flex justify-between items-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-visible animate-in fade-in zoom-in duration-200">
+            <div className="bg-orange-600 px-6 py-4 flex justify-between items-center rounded-t-xl">
               <h2 className="text-white font-bold text-lg flex items-center gap-2"><Pill size={20}/> Nova Medicação</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-white"><X size={24}/></button>
             </div>
             <form onSubmit={handleSalvarMedicacao} className="p-6 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" required value={medNome} onChange={e => setMedNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Ex: Dipirona" autoFocus /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 500mg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Horário</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 14:00" /></div>
+              
+              {/* COMBOBOX INPUT */}
+              <div className="relative" ref={wrapperRef}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                  <div className="relative">
+                    <input 
+                        type="text" 
+                        required 
+                        value={medNome} 
+                        onChange={handleNomeChange} 
+                        onFocus={() => { if(medNome) setMostrarSugestoes(true); }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900" 
+                        placeholder="Digite para buscar..." 
+                        autoFocus 
+                        autoComplete="off"
+                    />
+                    <div className="absolute right-3 top-2.5 text-gray-400 pointer-events-none"><ChevronDown size={16}/></div>
+                  </div>
+                  
+                  {/* Lista de Sugestões */}
+                  {mostrarSugestoes && sugestoes.length > 0 && (
+                    <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-60 overflow-y-auto shadow-xl">
+                        {sugestoes.map(sugestao => (
+                            <li 
+                                key={sugestao.id} 
+                                onClick={() => selecionarMedicamento(sugestao.nome)}
+                                className="px-4 py-2 hover:bg-orange-50 cursor-pointer text-gray-800 text-sm border-b border-gray-50 last:border-none transition-colors"
+                            >
+                                {sugestao.nome}
+                            </li>
+                        ))}
+                    </ul>
+                  )}
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 6 em 6h" /></div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 500mg" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Horário</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 14:00" /></div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 6 em 6h" /></div>
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg shadow-sm disabled:opacity-50">Salvar</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-sm disabled:opacity-50 transition-colors">Salvar</button>
               </div>
             </form>
           </div>
@@ -356,13 +394,13 @@ export default function DetalhesEncontrista() {
             <form onSubmit={handleUpdatePessoa} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
-                <input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" />
+                <input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none text-gray-900" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label><input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label><input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none text-gray-900" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label><input type="text" value={editAlergias} onChange={e => setEditAlergias(e.target.value)} className="w-full px-3 py-2 border border-red-200 bg-red-50 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none text-red-900" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none text-gray-900" /></div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
                 <button type="submit" disabled={saving} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg flex items-center gap-2">{saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar Alterações</>}</button>
