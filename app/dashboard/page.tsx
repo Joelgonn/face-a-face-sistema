@@ -32,10 +32,11 @@ interface Encontrista {
 }
 
 export default function Dashboard() {
-  // Estados de Dados
+  // Estados de Dados e Usuário
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false); // Estado para controlar visibilidade
   const [importing, setImporting] = useState(false);
   
   // Estados do Modal Novo Encontrista
@@ -61,6 +62,23 @@ export default function Dashboard() {
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
 
+  // Lógica de verificação do Admin e carga inicial
+  useEffect(() => {
+    const checkUserAndFetch = async () => {
+        // 1. Verifica Usuário
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+            setIsAdmin(true);
+        }
+
+        // 2. Busca Dados
+        await buscarEncontristas();
+    };
+
+    checkUserAndFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
@@ -82,24 +100,21 @@ export default function Dashboard() {
       let dataBase = ultimoRegistro ? new Date(ultimoRegistro.data_hora) : null;
       
       if (!dataBase) {
-        // Se nunca tomou, baseia-se no horário inicial programado para hoje
         const [hora, minuto] = med.horario_inicial.split(':').map(Number);
         const hoje = new Date();
         dataBase = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), hora, minuto);
       } else {
-        // Se já tomou, calcula a próxima dose
         dataBase = new Date(dataBase.getTime() + intervaloHoras * 60 * 60 * 1000);
       }
 
       const agora = new Date();
-      // Diferença em minutos até a próxima dose
       const diffMinutos = (dataBase.getTime() - agora.getTime()) / 1000 / 60;
 
       if (diffMinutos < 0) {
-        statusGeral = 1; // Atrasado
-        break; // Se um estiver atrasado, o status geral é atrasado
+        statusGeral = 1; 
+        break; 
       } else if (diffMinutos < 30) {
-        statusGeral = Math.min(statusGeral, 2); // Atenção
+        statusGeral = Math.min(statusGeral, 2); 
       }
     }
 
@@ -124,10 +139,8 @@ export default function Dashboard() {
 
   const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
     const acao = currentStatus ? "CANCELAR a presença" : "CONFIRMAR a presença";
-    // Pequena confirmação para evitar cliques acidentais na lista
     if (!confirm(`Tem certeza que deseja ${acao} de ${nome}?`)) return;
 
-    // Otimista UI update
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
 
     const { error } = await supabase
@@ -137,7 +150,7 @@ export default function Dashboard() {
 
     if (error) {
         alert("Erro ao atualizar check-in");
-        buscarEncontristas(); // Reverte se der erro
+        buscarEncontristas();
     }
   };
 
@@ -163,9 +176,10 @@ export default function Dashboard() {
     setSaving(false);
   };
 
-  // --- AÇÃO CRÍTICA: ZERAR SISTEMA ---
+  // --- AÇÃO CRÍTICA: ZERAR SISTEMA (ADMIN ONLY) ---
   const handleZerarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) return; // Proteção extra no frontend
     
     if (resetPassword !== '123') {
         alert("Senha incorreta! Ação cancelada.");
@@ -174,7 +188,6 @@ export default function Dashboard() {
     }
 
     setIsResetting(true);
-    
     // Deleta todos onde ID > 0 (ou seja, todos)
     const { error } = await supabase.from('encontristas').delete().gt('id', 0);
 
@@ -208,7 +221,6 @@ export default function Dashboard() {
             const parts = cleanLine.split(','); 
             if (parts.length >= 2) {
                 const nome = parts[1]?.trim();
-                // Remove aspas e limpa
                 const alergiasRaw = parts[2]?.replace(/['"]+/g, '').trim(); 
                 const alergias = alergiasRaw ? alergiasRaw.split(';').map(s => s.trim()).join(', ') : null;
                 const observacoes = parts[3]?.trim() || null;
@@ -225,7 +237,6 @@ export default function Dashboard() {
         buscarEncontristas();
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    // Importante: UTF-8 para acentos
     reader.readAsText(file, 'UTF-8');
   };
 
@@ -234,25 +245,20 @@ export default function Dashboard() {
       router.push('/'); 
       router.refresh();
   };
-  
-  useEffect(() => { buscarEncontristas(); }, [buscarEncontristas]);
 
   const filteredEncontristas = encontristas.filter(pessoa => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return true;
     const searchId = Number(term);
-    // Se digitar um número, busca pelo ID
     if (!isNaN(searchId) && term !== '') {
         return pessoa.id === searchId;
     }
-    // Se não, busca por nome ou responsável
     return (
       pessoa.nome.toLowerCase().includes(term) ||
       (pessoa.responsavel && pessoa.responsavel.toLowerCase().includes(term))
     );
   });
 
-  // Ordenação por prioridade (Atrasados primeiro)
   const sortedEncontristas = [...filteredEncontristas].sort((a, b) => {
      const statusA = getStatusPessoa(a);
      const statusB = getStatusPessoa(b);
@@ -270,15 +276,18 @@ export default function Dashboard() {
           </h1>
           
           <div className="flex items-center gap-4">
-            {/* Botão Gestão de Equipe */}
-            <Link 
-                href="/dashboard/equipe" 
-                className="hidden md:flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
-            >
-                <Shield size={18} /> Equipe
-            </Link>
+            
+            {/* Botão Gestão de Equipe (SÓ PARA ADMIN) */}
+            {isAdmin && (
+                <Link 
+                    href="/dashboard/equipe" 
+                    className="hidden md:flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
+                >
+                    <Shield size={18} /> Equipe
+                </Link>
+            )}
 
-            {/* Botão Base de Medicamentos */}
+            {/* Botão Base de Medicamentos (Todos veem) */}
             <Link 
                 href="/dashboard/medicamentos" 
                 className="hidden md:flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100"
@@ -341,14 +350,16 @@ export default function Dashboard() {
                 {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} Importar
             </button>
             
-            {/* Botão ZERAR SISTEMA */}
-            <button 
-                onClick={() => setIsResetModalOpen(true)} 
-                className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-colors"
-                title="Limpar lista para próximo encontro"
-            >
-                <Trash2 size={20} /> Zerar
-            </button>
+            {/* Botão ZERAR SISTEMA (SÓ PARA ADMIN) */}
+            {isAdmin && (
+                <button 
+                    onClick={() => setIsResetModalOpen(true)} 
+                    className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-colors"
+                    title="Limpar lista para próximo encontro"
+                >
+                    <Trash2 size={20} /> Zerar
+                </button>
+            )}
 
             <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-md active:scale-95 transition-all">
                 <Plus size={20} /> Novo
