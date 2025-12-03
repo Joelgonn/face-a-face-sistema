@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown
+  ChevronDown 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -64,7 +64,7 @@ export default function Dashboard() {
       .order('nome', { ascending: true });
 
     if (error) console.error(error);
-    // Correção: Tipagem explícita ao invés de 'any'
+    // Correção de tipagem
     else setEncontristas((data as unknown as Encontrista[]) || []);
     setLoading(false);
   }, [supabase]);
