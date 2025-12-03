@@ -3,8 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
 import { 
-  LogOut, Plus, Search, AlertCircle, Loader2, Upload, Clock, X, 
-  UserCheck, UserX, Users, Pill, Trash2, AlertTriangle, Shield 
+  LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
+  UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
+  ChevronDown, ChevronUp 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   
   // Estados do Modal Novo Encontrista
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,6 +59,10 @@ export default function Dashboard() {
   const supabase = createClient();
 
   // --- LÓGICA ---
+
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
 
   const buscarEncontristas = useCallback(async () => {
     const { data, error } = await supabase
@@ -81,13 +87,8 @@ export default function Dashboard() {
         }
         await buscarEncontristas();
     };
-
     checkUserAndFetch();
   }, [buscarEncontristas, supabase]);
-
-  const totalEncontristas = encontristas.length;
-  const totalPresentes = encontristas.filter(p => p.check_in).length;
-  const totalAusentes = totalEncontristas - totalPresentes;
 
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
@@ -101,7 +102,6 @@ export default function Dashboard() {
       if (!match) continue; 
 
       const intervaloHoras = parseInt(match[1]);
-      
       const historico = med.historico_administracao?.sort((a, b) => 
         new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime()
       );
@@ -288,19 +288,28 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between">
-                <div><p className="text-sm text-gray-500 font-medium">Total Inscritos</p><p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p></div>
-                <div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div>
+        
+        {/* Toggle Mobile Estatísticas */}
+        <div className="md:hidden mb-4">
+          <button 
+            onClick={() => setShowStats(!showStats)} 
+            className="w-full bg-white p-4 rounded-xl shadow-sm border border-orange-200 flex items-center justify-between active:bg-orange-50 transition-colors"
+          >
+            <div className="flex flex-col items-start">
+              <span className="text-orange-900 font-bold text-lg">Visão Geral</span>
+              <span className="text-sm text-gray-500">
+                {totalPresentes} de {totalEncontristas} presentes
+              </span>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between">
-                <div><p className="text-sm text-green-600 font-medium">Já Chegaram</p><p className="text-2xl font-bold text-green-700">{totalPresentes}</p></div>
-                <div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div>
-            </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between">
-                <div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div>
-                <div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div>
-            </div>
+            {showStats ? <ChevronUp className="text-orange-400"/> : <ChevronDown className="text-orange-400"/>}
+          </button>
+        </div>
+
+        {/* Cards Estatísticas */}
+        <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 ${showStats ? 'block' : 'hidden md:grid'}`}>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between"><div><p className="text-sm text-gray-500 font-medium">Total Inscritos</p><p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p></div><div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div></div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between"><div><p className="text-sm text-green-600 font-medium">Já Chegaram</p><p className="text-2xl font-bold text-green-700">{totalPresentes}</p></div><div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div></div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between"><div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div><div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div></div>
         </div>
 
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
@@ -370,6 +379,7 @@ export default function Dashboard() {
         </div>
       </main>
 
+      {/* Modal Novo Encontrista */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
@@ -383,13 +393,16 @@ export default function Dashboard() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" /></div>
                 <div className="flex justify-end gap-2 pt-2">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                    <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg font-bold">{saving ? '...' : 'Salvar'}</button>
+                    <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg font-bold flex items-center justify-center gap-2">
+                        {saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar</>}
+                    </button>
                 </div>
              </form>
           </div>
         </div>
       )}
 
+      {/* Modal Zerar Sistema */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center">
@@ -397,7 +410,10 @@ export default function Dashboard() {
              <h2 className="text-red-900 font-bold text-xl">Zerar Sistema</h2>
              <p className="text-red-700 text-sm mb-4">Cuidado! Isso apagará TODOS os encontristas.</p>
              <form onSubmit={handleZerarSistema} className="space-y-4">
-                <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-center text-gray-900" placeholder="Senha..." autoFocus />
+                <div className="relative">
+                    <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 border rounded-lg text-center text-gray-900" placeholder="Senha..." autoFocus />
+                </div>
                 <div className="flex gap-2">
                     <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-2 bg-gray-100 rounded-lg text-gray-700">Cancelar</button>
                     <button type="submit" disabled={isResetting} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">{isResetting ? '...' : 'Confirmar'}</button>
