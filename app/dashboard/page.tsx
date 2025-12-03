@@ -33,7 +33,6 @@ interface Encontrista {
 }
 
 export default function Dashboard() {
-  // Estados de Dados e Usuário
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,7 +40,6 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
-  // Estados do Modal Novo Encontrista
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [novoNome, setNovoNome] = useState('');
@@ -49,7 +47,6 @@ export default function Dashboard() {
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
 
-  // Estados do Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -59,10 +56,6 @@ export default function Dashboard() {
   const supabase = createClient();
 
   // --- LÓGICA ---
-
-  const totalEncontristas = encontristas.length;
-  const totalPresentes = encontristas.filter(p => p.check_in).length;
-  const totalAusentes = totalEncontristas - totalPresentes;
 
   const buscarEncontristas = useCallback(async () => {
     const { data, error } = await supabase
@@ -90,6 +83,10 @@ export default function Dashboard() {
     checkUserAndFetch();
   }, [buscarEncontristas, supabase]);
 
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
+
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
@@ -102,6 +99,7 @@ export default function Dashboard() {
       if (!match) continue; 
 
       const intervaloHoras = parseInt(match[1]);
+      
       const historico = med.historico_administracao?.sort((a, b) => 
         new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime()
       );
@@ -262,26 +260,44 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-orange-50 relative">
       
+      {/* HEADER RESPONSIVO */}
       <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-orange-700 flex items-center gap-2">
-            Face a Face <span className="text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span>
+            Face a Face 
+            <span className="hidden sm:inline-block text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span>
           </h1>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {/* Botão Equipe: Icone apenas no mobile, Texto no PC */}
             {isAdmin && (
                 <Link 
                     href="/dashboard/equipe" 
-                    className="hidden md:flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
+                    className="flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
+                    title="Equipe"
                 >
-                    <Shield size={18} /> Equipe
+                    <Shield size={18} />
+                    <span className="hidden md:inline">Equipe</span>
                 </Link>
             )}
-            <Link href="/dashboard/medicamentos" className="hidden md:flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100">
-                <Pill size={18} /> Medicamentos
+
+            {/* Botão Medicamentos: Icone apenas no mobile */}
+            <Link 
+                href="/dashboard/medicamentos" 
+                className="flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100"
+                title="Medicamentos"
+            >
+                <Pill size={18} />
+                <span className="hidden md:inline">Meds</span>
             </Link>
-            <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors">
-                <LogOut size={18} /> Sair
+            
+            <button 
+                onClick={handleLogout} 
+                className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors ml-1"
+                title="Sair"
+            >
+                <LogOut size={18} />
+                <span className="hidden md:inline">Sair</span>
             </button>
           </div>
         </div>
@@ -289,7 +305,7 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         
-        {/* Toggle Mobile Estatísticas */}
+        {/* VISÃO GERAL (ACCORDION MOBILE) */}
         <div className="md:hidden mb-4">
           <button 
             onClick={() => setShowStats(!showStats)} 
@@ -305,13 +321,13 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Cards Estatísticas */}
         <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 ${showStats ? 'block' : 'hidden md:grid'}`}>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between"><div><p className="text-sm text-gray-500 font-medium">Total Inscritos</p><p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p></div><div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between"><div><p className="text-sm text-green-600 font-medium">Já Chegaram</p><p className="text-2xl font-bold text-green-700">{totalPresentes}</p></div><div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between"><div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div><div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div></div>
         </div>
 
+        {/* BARRA DE AÇÕES */}
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
@@ -342,6 +358,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* LISTA */}
         <div className="bg-white rounded-xl shadow-md border border-orange-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -379,7 +396,7 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* Modal Novo Encontrista */}
+      {/* MODAIS */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
@@ -402,7 +419,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Modal Zerar Sistema */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center">
