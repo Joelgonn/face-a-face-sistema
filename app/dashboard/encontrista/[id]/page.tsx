@@ -78,7 +78,49 @@ export default function DetalhesEncontrista() {
   const params = useParams();
   const supabase = createClient();
 
-  // --- LÓGICA ---
+  // --- LÓGICA DE FORMATAÇÃO E VALIDAÇÃO ---
+
+  // Formata horário enquanto digita (Ex: 2100 -> 21:00)
+  const handleHorarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value.replace(/\D/g, ''); // Remove não números
+    
+    if (v.length > 4) v = v.slice(0, 4); // Limita a 4 caracteres
+
+    // Validação básica de horas e minutos
+    if (v.length >= 2) {
+        const hora = parseInt(v.substring(0, 2));
+        if (hora > 23) v = '23' + v.substring(2);
+    }
+    if (v.length === 4) {
+        const minuto = parseInt(v.substring(2, 4));
+        if (minuto > 59) v = v.substring(0, 2) + '59';
+    }
+
+    // Adiciona os dois pontos
+    if (v.length > 2) {
+        v = `${v.slice(0, 2)}:${v.slice(2)}`;
+    }
+
+    setMedHorario(v);
+  };
+
+  // Corrige a posologia ao sair do campo (Ex: "6/6" -> "6/6h")
+  const handlePosologiaBlur = () => {
+    const val = medPosologia.trim(); // CORREÇÃO: alterado de let para const
+    if (!val) return;
+
+    // Se digitou apenas número (ex: "8"), vira "8h"
+    if (/^\d+$/.test(val)) {
+        setMedPosologia(`${val}h`);
+        return;
+    }
+    // Se digitou "6/6" ou "8 em 8" mas esqueceu o "h" ou "horas"
+    if (!val.match(/(h|hora)/i) && /\d/.test(val)) {
+        setMedPosologia(`${val}h`);
+    }
+  };
+
+  // --- FIM LÓGICA NOVA ---
 
   const verificarAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return false; 
@@ -192,6 +234,13 @@ export default function DetalhesEncontrista() {
 
   const handleSalvarMedicacao = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validação final de horário
+    if (medHorario.length !== 5 || !medHorario.includes(':')) {
+        alert("Por favor, preencha o horário corretamente (Ex: 14:00)");
+        return;
+    }
+
     const alerta = verificarAlergia(medNome);
     if (alerta && !confirm(alerta)) return;
 
@@ -217,7 +266,6 @@ export default function DetalhesEncontrista() {
     if (!error) carregarDados();
   };
 
-  // 1. Abre o modal para confirmar o horário
   const abrirConfirmacaoAdministracao = (prescricao: Prescricao) => {
     const alerta = verificarAlergia(prescricao.nome_medicamento);
     if (alerta && !confirm(alerta)) return;
@@ -237,7 +285,6 @@ export default function DetalhesEncontrista() {
     setIsAdministerModalOpen(true);
   };
 
-  // 2. Salva efetivamente no banco com o horário escolhido
   const confirmarAdministracao = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPrescricao || !horaAdministracao) return;
@@ -262,7 +309,6 @@ export default function DetalhesEncontrista() {
     carregarDados();
   };
 
-  // Renderização
   if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2" /> Carregando...</div>;
   if (!pessoa) return null;
 
@@ -439,9 +485,37 @@ export default function DetalhesEncontrista() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 500mg" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Horário</label><input type="text" required value={medHorario} onChange={e => setMedHorario(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 14:00" /></div>
+                
+                {/* CAMPO HORÁRIO COM MÁSCARA */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+                    <input 
+                        type="text" 
+                        required 
+                        value={medHorario} 
+                        onChange={handleHorarioChange} 
+                        className="w-full px-3 py-2 border rounded-lg text-gray-900 text-center tracking-wider font-medium" 
+                        placeholder="00:00"
+                        maxLength={5} 
+                    />
+                </div>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label><input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 6 em 6h" /></div>
+              
+              {/* CAMPO POSOLOGIA COM AUTOCORREÇÃO */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={medPosologia} 
+                    onChange={e => setMedPosologia(e.target.value)} 
+                    onBlur={handlePosologiaBlur}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900" 
+                    placeholder="Ex: 6/6h" 
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Ex: digite &quot;8/8&quot; que o sistema corrige para &quot;8/8h&quot;</p>
+              </div>
+
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
                 <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-sm disabled:opacity-50 transition-colors">Salvar</button>
