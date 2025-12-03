@@ -25,3 +25,28 @@ body {
     text-wrap: balance;
   }
 }
+
+@layer utilities {
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-md border-b border-orange-100/50;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border border-transparent hover:border-orange-100;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1; 
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; 
+}

@@ -5,23 +5,19 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown, ChevronUp 
+  ChevronDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 // --- Interfaces ---
-interface Historico {
-  data_hora: string;
-}
-
+interface Historico { data_hora: string; }
 interface Prescricao {
   id: number;
   posologia: string;
   horario_inicial: string;
   historico_administracao: Historico[];
 }
-
 interface Encontrista {
   id: number;
   nome: string;
@@ -33,7 +29,7 @@ interface Encontrista {
 }
 
 export default function Dashboard() {
-  // Estados de Dados e Usuário
+  // Estados
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,15 +37,13 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
-  // Estados do Modal Novo Encontrista
+  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [novoNome, setNovoNome] = useState('');
   const [novoResponsavel, setNovoResponsavel] = useState('');
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
-
-  // Estados do Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -58,8 +52,7 @@ export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  // --- LÓGICA ---
-
+  // --- LÓGICA E CÁLCULOS ---
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
@@ -70,46 +63,32 @@ export default function Dashboard() {
       .select(`*, prescricoes (id, posologia, horario_inicial, historico_administracao (data_hora))`)
       .order('nome', { ascending: true });
 
-    if (error) {
-        console.error('Erro:', error);
-    } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setEncontristas((data as any) || []);
-    }
+    if (error) console.error(error);
+    // Correção: Tipagem explícita ao invés de 'any'
+    else setEncontristas((data as unknown as Encontrista[]) || []);
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
-    const checkUserAndFetch = async () => {
+    const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        
-        // LÓGICA MULTI-ADMIN: Verifica se o email está na lista separada por vírgulas
-        const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',');
-        if (user?.email && adminList.includes(user.email)) {
+        if (user?.email && (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').includes(user.email)) {
             setIsAdmin(true);
         }
-        
         await buscarEncontristas();
     };
-    checkUserAndFetch();
+    init();
   }, [buscarEncontristas, supabase]);
 
   const getStatusPessoa = (pessoa: Encontrista) => {
-    if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
-      return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
-    }
-
-    let statusGeral = 3; 
-
+    if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) return { cor: 'bg-slate-100 text-slate-500 border-slate-200', texto: 'Sem meds', prioridade: 0 };
+    
+    let statusGeral = 3;
     for (const med of pessoa.prescricoes) {
       const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
       if (!match) continue; 
-
       const intervaloHoras = parseInt(match[1]);
-      const historico = med.historico_administracao?.sort((a, b) => 
-        new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime()
-      );
-      
+      const historico = med.historico_administracao?.sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
       const ultimoRegistro = historico?.[0];
       let dataBase = ultimoRegistro ? new Date(ultimoRegistro.data_hora) : null;
       
@@ -121,111 +100,59 @@ export default function Dashboard() {
         dataBase = new Date(dataBase.getTime() + intervaloHoras * 60 * 60 * 1000);
       }
 
-      const agora = new Date();
-      const diffMinutos = (dataBase.getTime() - agora.getTime()) / 1000 / 60;
-
-      if (diffMinutos < 0) {
-        statusGeral = 1; 
-        break; 
-      } else if (diffMinutos < 30) {
-        statusGeral = Math.min(statusGeral, 2); 
-      }
+      const diffMinutos = (dataBase.getTime() - new Date().getTime()) / 1000 / 60;
+      if (diffMinutos < 0) { statusGeral = 1; break; } 
+      else if (diffMinutos < 30) { statusGeral = Math.min(statusGeral, 2); }
     }
 
     if (statusGeral === 1) return { cor: 'bg-red-100 text-red-700 border-red-200 animate-pulse', texto: 'Atrasado', prioridade: 3 };
-    if (statusGeral === 2) return { cor: 'bg-yellow-100 text-yellow-700 border-yellow-200', texto: 'Atenção', prioridade: 2 };
-    return { cor: 'bg-green-100 text-green-700 border-green-200', texto: 'Em dia', prioridade: 1 };
+    if (statusGeral === 2) return { cor: 'bg-amber-100 text-amber-700 border-amber-200', texto: 'Atenção', prioridade: 2 };
+    return { cor: 'bg-emerald-100 text-emerald-700 border-emerald-200', texto: 'Em dia', prioridade: 1 };
   };
 
   const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
-    const acao = currentStatus ? "CANCELAR a presença" : "CONFIRMAR a presença";
-    if (!confirm(`Tem certeza que deseja ${acao} de ${nome}?`)) return;
-
+    if (!confirm(`${currentStatus ? "CANCELAR" : "CONFIRMAR"} presença de ${nome}?`)) return;
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
-
-    const { error } = await supabase
-        .from('encontristas')
-        .update({ check_in: !currentStatus })
-        .eq('id', id);
-
-    if (error) {
-        alert("Erro ao atualizar check-in");
-        buscarEncontristas();
-    }
+    await supabase.from('encontristas').update({ check_in: !currentStatus }).eq('id', id);
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoNome.trim()) return alert("O nome é obrigatório!");
-    
+    if (!novoNome.trim()) return alert("Nome obrigatório!");
     setSaving(true);
-    const { error } = await supabase.from('encontristas').insert({ 
-        nome: novoNome, 
-        responsavel: novoResponsavel, 
-        alergias: novasAlergias, 
-        observacoes: novasObservacoes, 
-        check_in: false 
-    });
-
-    if (error) alert("Erro: " + error.message);
-    else {
-      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
-      setIsModalOpen(false);
-      buscarEncontristas();
-    }
+    const { error } = await supabase.from('encontristas').insert({ nome: novoNome, responsavel: novoResponsavel, alergias: novasAlergias, observacoes: novasObservacoes, check_in: false });
+    if (!error) {
+      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes(''); setIsModalOpen(false); buscarEncontristas();
+    } else alert(error.message);
     setSaving(false);
   };
 
   const handleZerarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
-    
-    if (resetPassword !== '123') {
-        alert("Senha incorreta! Ação cancelada.");
-        setResetPassword('');
-        return;
-    }
-
+    if (resetPassword !== '123') { alert("Senha incorreta!"); setResetPassword(''); return; }
     setIsResetting(true);
     const { error } = await supabase.from('encontristas').delete().gt('id', 0);
-
-    if (error) {
-        alert("Erro ao limpar o sistema: " + error.message);
-    } else {
-        alert("Sistema limpo com sucesso!");
-        setEncontristas([]);
-        setIsResetModalOpen(false);
-        setResetPassword('');
-    }
+    if (!error) { setEncontristas([]); setIsResetModalOpen(false); setResetPassword(''); }
     setIsResetting(false);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-    if (!confirm("Importar encontristas?")) { event.target.value = ''; return; }
-    
+    if (!file || !confirm("Importar lista?")) return;
     setImporting(true);
     const reader = new FileReader();
     reader.onload = async (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n');
+        const lines = (e.target?.result as string).split('\n');
         let count = 0;
-        
         for (const line of lines) {
-            const cleanLine = line.trim();
-            if (!cleanLine || cleanLine.startsWith('#')) continue;
-            
-            const parts = cleanLine.split(','); 
-            if (parts.length >= 2) {
-                const nome = parts[1]?.trim();
-                const alergiasRaw = parts[2]?.replace(/['"]+/g, '').trim(); 
-                const alergias = alergiasRaw ? alergiasRaw.split(';').map(s => s.trim()).join(', ') : null;
-                const observacoes = parts[3]?.trim() || null;
-                const responsavel = parts[4]?.trim() || null;
-                
+            const parts = line.trim().split(','); 
+            if (parts.length >= 2 && !line.startsWith('#')) {
                 const { error } = await supabase.from('encontristas').insert({ 
-                    nome, alergias, observacoes, responsavel, check_in: false 
+                    nome: parts[1]?.trim(), 
+                    alergias: parts[2]?.replace(/['"]+/g, '').trim(), 
+                    observacoes: parts[3]?.trim() || null, 
+                    responsavel: parts[4]?.trim() || null, 
+                    check_in: false 
                 });
                 if (!error) count++;
             }
@@ -238,168 +165,175 @@ export default function Dashboard() {
     reader.readAsText(file, 'UTF-8');
   };
 
-  const handleLogout = async () => { 
-      await supabase.auth.signOut(); 
-      router.push('/'); 
-      router.refresh();
-  };
-
-  const filteredEncontristas = encontristas.filter(pessoa => {
+  const filtered = encontristas.filter(p => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return true;
-    const searchId = Number(term);
-    if (!isNaN(searchId) && term !== '') {
-        return pessoa.id === searchId;
-    }
-    return (
-      pessoa.nome.toLowerCase().includes(term) ||
-      (pessoa.responsavel && pessoa.responsavel.toLowerCase().includes(term))
-    );
+    return p.nome.toLowerCase().includes(term) || p.responsavel?.toLowerCase().includes(term) || (term && p.id === Number(term));
   });
 
-  const sortedEncontristas = [...filteredEncontristas].sort((a, b) => {
-     const statusA = getStatusPessoa(a);
-     const statusB = getStatusPessoa(b);
-     return statusB.prioridade - statusA.prioridade;
-  });
+  const sorted = [...filtered].sort((a, b) => getStatusPessoa(b).prioridade - getStatusPessoa(a).prioridade);
 
   return (
-    <div className="min-h-screen bg-orange-50 relative">
+    <div className="min-h-screen bg-slate-50 relative pb-20">
       
-      <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-orange-700 flex items-center gap-2">
-            Face a Face <span className="hidden sm:inline-block text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span>
-          </h1>
+      {/* HEADER COM GLASS EFFECT */}
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+             <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center text-white font-bold shadow-orange-200 shadow-lg">F</div>
+             <h1 className="text-xl font-bold text-slate-800 hidden sm:block">Face a Face</h1>
+          </div>
           
           <div className="flex items-center gap-2">
-            {isAdmin && (
-                <Link 
-                    href="/dashboard/equipe" 
-                    className="flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
-                >
-                    <Shield size={18} /> <span className="hidden md:inline">Equipe</span>
-                </Link>
-            )}
-            <Link href="/dashboard/medicamentos" className="flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100">
-                <Pill size={18} /> <span className="hidden md:inline">Meds</span>
-            </Link>
-            <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors ml-1">
-                <LogOut size={18} /> <span className="hidden md:inline">Sair</span>
-            </button>
+            {isAdmin && <Link href="/dashboard/equipe" className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors" title="Equipe"><Shield size={20}/></Link>}
+            <Link href="/dashboard/medicamentos" className="p-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-full transition-colors font-medium flex items-center gap-2"><Pill size={20}/><span className="hidden sm:inline">Meds</span></Link>
+            <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"><LogOut size={20}/></button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         
-        {/* VISÃO GERAL (ACCORDION MOBILE) */}
-        <div className="md:hidden mb-4">
-          <button 
-            onClick={() => setShowStats(!showStats)} 
-            className="w-full bg-white p-4 rounded-xl shadow-sm border border-orange-200 flex items-center justify-between active:bg-orange-50 transition-colors"
-          >
-            <div className="flex flex-col items-start">
-              <span className="text-orange-900 font-bold text-lg">Visão Geral</span>
-              <span className="text-sm text-gray-500">
-                {totalPresentes} de {totalEncontristas} presentes
-              </span>
+        {/* VISÃO GERAL - ACCORDION MOBILE */}
+        <div className="md:hidden">
+          <button onClick={() => setShowStats(!showStats)} className="w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between active:scale-[0.99] transition-transform">
+            <div>
+              <span className="text-slate-800 font-bold text-lg block">Visão Geral</span>
+              <span className="text-sm text-slate-500">{totalPresentes} de {totalEncontristas} presentes</span>
             </div>
-            {showStats ? <ChevronUp className="text-orange-400"/> : <ChevronDown className="text-orange-400"/>}
+            <div className={`transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`}><ChevronDown className="text-slate-400"/></div>
           </button>
         </div>
 
-        {/* CARDS DE STATUS (GRID) */}
-        <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 ${showStats ? 'block' : 'hidden md:grid'}`}>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between"><div><p className="text-sm text-gray-500 font-medium">Total Inscritos</p><p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p></div><div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between"><div><p className="text-sm text-green-600 font-medium">Já Chegaram</p><p className="text-2xl font-bold text-green-700">{totalPresentes}</p></div><div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between"><div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div><div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div></div>
+        {/* CARDS ESTATÍSTICAS - ANIMADOS */}
+        <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-all duration-300 ${showStats ? 'block' : 'hidden md:grid'}`}>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between card-hover">
+                <div><p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Inscritos</p><p className="text-3xl font-bold text-slate-800">{totalEncontristas}</p></div>
+                <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Users size={24} /></div>
+            </div>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between card-hover">
+                <div><p className="text-xs uppercase tracking-wide text-green-600 font-semibold">Presentes</p><p className="text-3xl font-bold text-green-700">{totalPresentes}</p></div>
+                <div className="bg-green-50 p-3 rounded-xl text-green-600"><UserCheck size={24} /></div>
+            </div>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between card-hover">
+                <div><p className="text-xs uppercase tracking-wide text-red-500 font-semibold">Ausentes</p><p className="text-3xl font-bold text-red-700">{totalAusentes}</p></div>
+                <div className="bg-red-50 p-3 rounded-xl text-red-500"><UserX size={24} /></div>
+            </div>
         </div>
 
-        {/* BARRA DE AÇÕES COMPACTA */}
-        <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
-            <input 
-                type="text" 
-                placeholder="Nome, Responsável ou ID..." 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm text-gray-900" 
-            />
+        {/* BARRA DE AÇÕES */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-3 text-slate-400 h-5 w-5" />
+            <input type="text" placeholder="Buscar por nome ou ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-slate-800 shadow-sm" />
           </div>
           
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
             {isAdmin && (
                 <>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50 transition-colors">
-                        {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} <span className="hidden md:inline">Importar</span>
+                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                        {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} <span className="hidden lg:inline">Importar</span>
                     </button>
-                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-colors">
-                        <Trash2 size={20} /> <span className="hidden md:inline">Zerar</span>
+                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                        <Trash2 size={18} /> <span className="hidden lg:inline">Zerar</span>
                     </button>
                 </>
             )}
-            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-md active:scale-95 transition-all">
+            <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-md shadow-orange-200 active:scale-95 transition-all whitespace-nowrap">
                 <Plus size={20} /> Novo
             </button>
           </div>
         </div>
 
-        {/* LISTA */}
-        <div className="bg-white rounded-xl shadow-md border border-orange-100 overflow-hidden">
+        {/* --- LISTA DE ENCONTRISTAS --- */}
+        
+        {/* 1. VERSÃO MOBILE (CARDS) */}
+        <div className="md:hidden space-y-3">
+          {loading ? <div className="text-center py-8 text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-8 text-slate-400">Ninguém encontrado.</div> : sorted.map((pessoa) => {
+             const status = getStatusPessoa(pessoa);
+             return (
+              <div key={pessoa.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.99] transition-transform">
+                <div className="flex justify-between items-start mb-3">
+                   <div>
+                      <div className="flex items-center gap-2 mb-1">
+                         <span className="text-xs font-mono text-slate-400">#{pessoa.id}</span>
+                         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${status.cor}`}>{status.texto}</span>
+                      </div>
+                      <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-bold text-slate-800 hover:text-orange-600">{pessoa.nome}</Link>
+                      {pessoa.responsavel && <p className="text-sm text-slate-500">Resp: {pessoa.responsavel}</p>}
+                   </div>
+                   <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                      {pessoa.check_in ? <UserCheck size={20}/> : <UserX size={20}/>}
+                   </button>
+                </div>
+                {pessoa.alergias && (
+                    <div className="flex items-start gap-2 mt-2 bg-red-50 p-2 rounded-lg border border-red-100">
+                        <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0"/>
+                        <span className="text-xs text-red-700 font-medium leading-tight">{pessoa.alergias}</span>
+                    </div>
+                )}
+              </div>
+             )
+          })}
+        </div>
+
+        {/* 2. VERSÃO DESKTOP (TABELA) */}
+        <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-orange-100/50 text-orange-800 text-sm uppercase">
-                  <th className="p-4">Status</th><th className="p-4">ID</th><th className="p-4">Nome</th><th className="p-4 text-center">Check-in</th><th className="p-4">Responsável</th><th className="p-4">Alergias</th>
+                <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
+                  <th className="p-4 font-semibold">Status</th>
+                  <th className="p-4 font-semibold">ID</th>
+                  <th className="p-4 font-semibold">Nome</th>
+                  <th className="p-4 font-semibold text-center">Check-in</th>
+                  <th className="p-4 font-semibold">Responsável</th>
+                  <th className="p-4 font-semibold">Alergias</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-gray-500">Carregando...</td></tr>
-                ) : sortedEncontristas.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-gray-500">Nenhum resultado encontrado.</td></tr>
-                ) : (
-                  sortedEncontristas.map((pessoa) => {
+              <tbody className="divide-y divide-slate-100">
+                {loading ? <tr><td colSpan={6} className="p-10 text-center text-slate-400">Carregando lista...</td></tr> : sorted.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-slate-400">Nenhum resultado encontrado.</td></tr> : sorted.map((pessoa) => {
                     const status = getStatusPessoa(pessoa);
                     return (
-                    <tr key={pessoa.id} className="hover:bg-orange-50/30 transition-colors group">
-                      <td className="p-4"><span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${status.cor}`}><Clock size={12}/> {status.texto}</span></td>
-                      <td className="p-4 text-sm text-gray-500">#{pessoa.id}</td>
-                      <td className="p-4 font-medium text-gray-900"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:underline">{pessoa.nome}</Link></td>
+                    <tr key={pessoa.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="p-4"><span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${status.cor}`}><Clock size={12}/> {status.texto}</span></td>
+                      <td className="p-4 text-sm text-slate-400 font-mono">#{pessoa.id}</td>
+                      <td className="p-4 font-medium text-slate-800"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:underline decoration-orange-300 underline-offset-2">{pessoa.nome}</Link></td>
                       <td className="p-4 text-center">
-                        <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                        <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
                             {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
                         </button>
                       </td>
-                      <td className="p-4 text-gray-600">{pessoa.responsavel || '-'}</td>
-                      <td className="p-4">{pessoa.alergias ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"><AlertCircle size={12} /> {pessoa.alergias}</span> : <span className="text-gray-300 text-sm">-</span>}</td>
+                      <td className="p-4 text-slate-500 text-sm">{pessoa.responsavel || '-'}</td>
+                      <td className="p-4">{pessoa.alergias ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-700 border border-red-100"><AlertCircle size={12} /> {pessoa.alergias}</span> : <span className="text-slate-300 text-xs">-</span>}</td>
                     </tr>
                   )})
-                )}
+                }
               </tbody>
             </table>
           </div>
         </div>
+
       </main>
 
-      {/* MODAIS */}
+      {/* MODAL NOVO ENCONTRISTA */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
-             <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold">Novo Encontrista</h2><button onClick={() => setIsModalOpen(false)}><X size={24}/></button></div>
-             <form onSubmit={handleSalvar} className="space-y-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-orange-500 focus:outline-none" autoFocus /></div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label><input type="text" value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label><input type="text" value={novasAlergias} onChange={e => setNovasAlergias(e.target.value)} className="w-full px-3 py-2 border border-red-200 bg-red-50 rounded-lg text-gray-900" /></div>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+             <div className="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-100">
+               <h2 className="text-slate-800 font-bold text-lg">Novo Encontrista</h2>
+               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={24}/></button>
+             </div>
+             <form onSubmit={handleSalvar} className="p-6 space-y-4">
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-slate-800" placeholder="Ex: João da Silva" autoFocus /></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Responsável</label><input type="text" value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" placeholder="Ex: Pr. Mario" /></div>
+                    <div><label className="block text-xs font-bold text-red-500 uppercase mb-1">Alergias</label><input type="text" value={novasAlergias} onChange={e => setNovasAlergias(e.target.value)} className="w-full px-4 py-2.5 border border-red-100 bg-red-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-400 text-red-800 placeholder-red-300" placeholder="Opcional" /></div>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" /></div>
-                <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                    <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 text-white rounded-lg font-bold flex items-center justify-center gap-2">
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" placeholder="..." /></div>
+                <div className="flex justify-end gap-3 pt-2">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-medium transition-colors">Cancelar</button>
+                    <button type="submit" disabled={saving} className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-lg shadow-orange-200 disabled:opacity-70 flex items-center gap-2 transition-all">
                         {saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar</>}
                     </button>
                 </div>
@@ -408,20 +342,26 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* MODAL ZERAR SISTEMA */}
       {isResetModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center">
-             <AlertTriangle className="text-red-600 w-12 h-12 mx-auto mb-2" />
-             <h2 className="text-red-900 font-bold text-xl">Zerar Sistema</h2>
-             <p className="text-red-700 text-sm mb-4">Cuidado! Isso apagará TODOS os encontristas.</p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
+             <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="text-red-500 w-8 h-8" />
+             </div>
+             <h2 className="text-slate-800 font-bold text-xl mb-2">Zerar Sistema?</h2>
+             <p className="text-slate-500 text-sm mb-6">Essa ação é irreversível. Todos os encontristas e históricos serão apagados.</p>
+             
              <form onSubmit={handleZerarSistema} className="space-y-4">
                 <div className="relative">
-                    <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full pl-9 pr-3 py-2 border rounded-lg text-center text-gray-900" placeholder="Senha..." autoFocus />
+                    <Lock className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
+                    <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 text-center text-slate-800 font-bold tracking-widest" placeholder="Senha..." autoFocus />
                 </div>
-                <div className="flex gap-2">
-                    <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-2 bg-gray-100 rounded-lg text-gray-700">Cancelar</button>
-                    <button type="submit" disabled={isResetting} className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">{isResetting ? '...' : 'Confirmar'}</button>
+                <div className="flex gap-3">
+                    <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                    <button type="submit" disabled={isResetting} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all">
+                        {isResetting ? <Loader2 className="animate-spin h-5 w-5 mx-auto"/> : 'CONFIRMAR'}
+                    </button>
                 </div>
              </form>
           </div>
