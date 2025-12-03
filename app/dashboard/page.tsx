@@ -33,6 +33,7 @@ interface Encontrista {
 }
 
 export default function Dashboard() {
+  // Estados de Dados e Usuário
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
+  // Estados do Modal Novo Encontrista
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [novoNome, setNovoNome] = useState('');
@@ -47,6 +49,7 @@ export default function Dashboard() {
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
 
+  // Estados do Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -56,6 +59,10 @@ export default function Dashboard() {
   const supabase = createClient();
 
   // --- LÓGICA ---
+
+  const totalEncontristas = encontristas.length;
+  const totalPresentes = encontristas.filter(p => p.check_in).length;
+  const totalAusentes = totalEncontristas - totalPresentes;
 
   const buscarEncontristas = useCallback(async () => {
     const { data, error } = await supabase
@@ -83,10 +90,6 @@ export default function Dashboard() {
     checkUserAndFetch();
   }, [buscarEncontristas, supabase]);
 
-  const totalEncontristas = encontristas.length;
-  const totalPresentes = encontristas.filter(p => p.check_in).length;
-  const totalAusentes = totalEncontristas - totalPresentes;
-
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-gray-100 text-gray-400', texto: 'Sem meds', prioridade: 0 };
@@ -99,7 +102,6 @@ export default function Dashboard() {
       if (!match) continue; 
 
       const intervaloHoras = parseInt(match[1]);
-      
       const historico = med.historico_administracao?.sort((a, b) => 
         new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime()
       );
@@ -260,44 +262,26 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-orange-50 relative">
       
-      {/* HEADER RESPONSIVO */}
       <header className="bg-white shadow-sm border-b border-orange-100 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-orange-700 flex items-center gap-2">
-            Face a Face 
-            <span className="hidden sm:inline-block text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span>
+            Face a Face <span className="hidden sm:inline-block text-sm font-normal text-gray-500 bg-orange-100 px-2 py-1 rounded-full">Painel</span>
           </h1>
           
           <div className="flex items-center gap-2">
-            {/* Botão Equipe: Icone apenas no mobile, Texto no PC */}
             {isAdmin && (
                 <Link 
                     href="/dashboard/equipe" 
                     className="flex items-center gap-2 text-gray-600 hover:text-orange-700 text-sm font-medium bg-white px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-gray-200 hover:border-orange-200 hover:bg-orange-50"
-                    title="Equipe"
                 >
-                    <Shield size={18} />
-                    <span className="hidden md:inline">Equipe</span>
+                    <Shield size={18} /> <span className="hidden md:inline">Equipe</span>
                 </Link>
             )}
-
-            {/* Botão Medicamentos: Icone apenas no mobile */}
-            <Link 
-                href="/dashboard/medicamentos" 
-                className="flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100"
-                title="Medicamentos"
-            >
-                <Pill size={18} />
-                <span className="hidden md:inline">Meds</span>
+            <Link href="/dashboard/medicamentos" className="flex items-center gap-2 text-orange-700 hover:text-orange-900 text-sm font-medium bg-orange-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors border border-orange-200 hover:bg-orange-100">
+                <Pill size={18} /> <span className="hidden md:inline">Medicamentos</span>
             </Link>
-            
-            <button 
-                onClick={handleLogout} 
-                className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors ml-1"
-                title="Sair"
-            >
-                <LogOut size={18} />
-                <span className="hidden md:inline">Sair</span>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium transition-colors ml-1">
+                <LogOut size={18} /> <span className="hidden md:inline">Sair</span>
             </button>
           </div>
         </div>
@@ -321,39 +305,58 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {/* CARDS DE STATUS (GRID) */}
         <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 ${showStats ? 'block' : 'hidden md:grid'}`}>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between"><div><p className="text-sm text-gray-500 font-medium">Total Inscritos</p><p className="text-2xl font-bold text-gray-800">{totalEncontristas}</p></div><div className="bg-blue-50 p-3 rounded-lg text-blue-600"><Users size={24} /></div></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100 flex items-center justify-between"><div><p className="text-sm text-green-600 font-medium">Já Chegaram</p><p className="text-2xl font-bold text-green-700">{totalPresentes}</p></div><div className="bg-green-50 p-3 rounded-lg text-green-600"><UserCheck size={24} /></div></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex items-center justify-between"><div><p className="text-sm text-red-500 font-medium">Faltam Chegar</p><p className="text-2xl font-bold text-red-700">{totalAusentes}</p></div><div className="bg-red-50 p-3 rounded-lg text-red-500"><UserX size={24} /></div></div>
         </div>
 
-        {/* BARRA DE AÇÕES */}
-        <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
+        {/* BARRA DE AÇÕES COMPACTA (SEARCH + BOTÕES) */}
+        <div className="flex flex-row gap-2 mb-6 h-12">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+            </div>
             <input 
                 type="text" 
-                placeholder="Nome, Responsável ou ID..." 
+                placeholder="Buscar..." 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm text-gray-900" 
+                className="w-full pl-10 pr-4 h-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm text-gray-900" 
             />
           </div>
           
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 shrink-0">
             {isAdmin && (
                 <>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm disabled:opacity-50 transition-colors">
-                        {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} Importar
+                    <button 
+                        onClick={() => fileInputRef.current?.click()} 
+                        disabled={importing} 
+                        className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-3 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 transition-colors"
+                        title="Importar"
+                    >
+                        {importing ? <Loader2 size={20} className="animate-spin"/> : <Upload size={20} />} 
+                        <span className="hidden md:inline">Importar</span>
                     </button>
-                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-colors">
-                        <Trash2 size={20} /> Zerar
+                    <button 
+                        onClick={() => setIsResetModalOpen(true)} 
+                        className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-3 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm transition-colors"
+                        title="Zerar Sistema"
+                    >
+                        <Trash2 size={20} />
+                        <span className="hidden md:inline">Zerar</span>
                     </button>
                 </>
             )}
-            <button onClick={() => setIsModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-md active:scale-95 transition-all">
-                <Plus size={20} /> Novo
+            <button 
+                onClick={() => setIsModalOpen(true)} 
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 h-full rounded-lg font-medium flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+                title="Novo Encontrista"
+            >
+                <Plus size={20} />
+                <span className="hidden md:inline">Novo</span>
             </button>
           </div>
         </div>
