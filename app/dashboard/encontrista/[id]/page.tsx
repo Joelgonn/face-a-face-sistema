@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, Plus, X, Trash2, Clock, CheckCircle2, Pencil, Save, Loader2, ChevronDown } from 'lucide-react';
+import { 
+  ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, 
+  Plus, X, Trash2, Clock, CheckCircle2, Pencil, Loader2, 
+  ChevronDown, CalendarClock 
+} from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -57,7 +61,7 @@ export default function DetalhesEncontrista() {
   const [medPosologia, setMedPosologia] = useState('');
   const [medHorario, setMedHorario] = useState('');
 
-  // Modal Administrar (Confirmar Horário)
+  // Modal Administrar
   const [isAdministerModalOpen, setIsAdministerModalOpen] = useState(false);
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
@@ -78,15 +82,11 @@ export default function DetalhesEncontrista() {
   const params = useParams();
   const supabase = createClient();
 
-  // --- LÓGICA DE FORMATAÇÃO E VALIDAÇÃO ---
+  // --- LÓGICA ---
 
-  // Formata horário enquanto digita (Ex: 2100 -> 21:00)
   const handleHorarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let v = e.target.value.replace(/\D/g, ''); // Remove não números
-    
-    if (v.length > 4) v = v.slice(0, 4); // Limita a 4 caracteres
-
-    // Validação básica de horas e minutos
+    let v = e.target.value.replace(/\D/g, ''); 
+    if (v.length > 4) v = v.slice(0, 4); 
     if (v.length >= 2) {
         const hora = parseInt(v.substring(0, 2));
         if (hora > 23) v = '23' + v.substring(2);
@@ -95,32 +95,23 @@ export default function DetalhesEncontrista() {
         const minuto = parseInt(v.substring(2, 4));
         if (minuto > 59) v = v.substring(0, 2) + '59';
     }
-
-    // Adiciona os dois pontos
     if (v.length > 2) {
         v = `${v.slice(0, 2)}:${v.slice(2)}`;
     }
-
     setMedHorario(v);
   };
 
-  // Corrige a posologia ao sair do campo (Ex: "6/6" -> "6/6h")
   const handlePosologiaBlur = () => {
-    const val = medPosologia.trim(); // CORREÇÃO: alterado de let para const
+    const val = medPosologia.trim();
     if (!val) return;
-
-    // Se digitou apenas número (ex: "8"), vira "8h"
     if (/^\d+$/.test(val)) {
         setMedPosologia(`${val}h`);
         return;
     }
-    // Se digitou "6/6" ou "8 em 8" mas esqueceu o "h" ou "horas"
     if (!val.match(/(h|hora)/i) && /\d/.test(val)) {
         setMedPosologia(`${val}h`);
     }
   };
-
-  // --- FIM LÓGICA NOVA ---
 
   const verificarAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return false; 
@@ -128,7 +119,7 @@ export default function DetalhesEncontrista() {
     const remedio = nomeRemedio.toLowerCase();
     const conflito = alergias.find(alergia => alergia.length > 2 && remedio.includes(alergia));
     if (conflito) {
-        return `⚠️ ALERTA CRÍTICO DE ALERGIA!\n\nO paciente é alérgico a "${conflito.toUpperCase()}".\nVocê está tentando usar "${nomeRemedio.toUpperCase()}".\n\nISSO PODE SER PERIGOSO. Deseja continuar mesmo assim?`;
+        return `⚠️ ALERTA DE ALERGIA!\nPaciente alérgico a "${conflito.toUpperCase()}".\nDeseja continuar?`;
     }
     return false; 
   };
@@ -136,11 +127,11 @@ export default function DetalhesEncontrista() {
   const calcularStatus = (med: Prescricao) => {
     const ultimoRegistro = historico.find(h => h.prescricao_id === med.id);
     if (!ultimoRegistro) {
-      return { texto: `Início: ${med.horario_inicial}`, cor: "text-gray-500", bg: "bg-gray-100" };
+      return { texto: `Início: ${med.horario_inicial}`, cor: "text-slate-500", bg: "bg-slate-50 border-slate-100" };
     }
     const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
     if (!match) {
-      return { texto: "Posologia complexa", cor: "text-blue-600", bg: "bg-blue-50" };
+      return { texto: "Posologia complexa", cor: "text-blue-600", bg: "bg-blue-50 border-blue-100" };
     }
     const intervaloHoras = parseInt(match[1]);
     const dataUltima = new Date(ultimoRegistro.data_hora);
@@ -151,25 +142,22 @@ export default function DetalhesEncontrista() {
     const diaFormatado = dataProxima.getDate() !== agora.getDate() ? `(${dataProxima.getDate()}/${dataProxima.getMonth()+1})` : '';
 
     if (agora > dataProxima) {
-      return { texto: `ATRASADO (${horaFormatada})`, cor: "text-red-700", bg: "bg-red-100 border-red-200 animate-pulse" };
+      return { texto: `ATRASADO (${horaFormatada})`, cor: "text-red-600 font-bold", bg: "bg-red-50 border-red-200 shadow-sm" };
     } else {
       const diffMinutos = (dataProxima.getTime() - agora.getTime()) / 1000 / 60;
       if (diffMinutos < 30) {
-        return { texto: `Próxima: ${horaFormatada} ${diaFormatado}`, cor: "text-yellow-700", bg: "bg-yellow-100 border-yellow-200" };
+        return { texto: `Próxima: ${horaFormatada} ${diaFormatado}`, cor: "text-amber-600 font-bold", bg: "bg-amber-50 border-amber-200" };
       }
-      return { texto: `Próxima: ${horaFormatada} ${diaFormatado}`, cor: "text-green-700", bg: "bg-green-100 border-green-200" };
+      return { texto: `Próxima: ${horaFormatada} ${diaFormatado}`, cor: "text-emerald-600 font-bold", bg: "bg-emerald-50 border-emerald-200" };
     }
   };
 
   const carregarDados = useCallback(async () => {
     if (!params.id) return;
-
     const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', params.id).single();
     if (pessoaData) setPessoa(pessoaData);
-
     const { data: medData } = await supabase.from('prescricoes').select('*').eq('encontrista_id', params.id);
     setMedicacoes(medData || []);
-
     if (medData && medData.length > 0) {
         const idsPrescricoes = medData.map(m => m.id);
         const { data: histData } = await supabase
@@ -177,22 +165,16 @@ export default function DetalhesEncontrista() {
             .select(`*, prescricao:prescricoes (nome_medicamento, dosagem)`)
             .in('prescricao_id', idsPrescricoes)
             .order('data_hora', { ascending: false });
-        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setHistorico((histData as any) || []);
-    } else {
-        setHistorico([]);
-    }
-
+    } else { setHistorico([]); }
     const { data: baseMeds } = await supabase.from('medicamentos').select('id, nome').order('nome');
     setBaseMedicamentos(baseMeds || []);
-
     setLoading(false);
   }, [params.id, supabase]);
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
-  // Combobox logic
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
@@ -210,9 +192,7 @@ export default function DetalhesEncontrista() {
         const filtrados = baseMedicamentos.filter(m => m.nome.toLowerCase().includes(valor.toLowerCase()));
         setSugestoes(filtrados);
         setMostrarSugestoes(true);
-    } else {
-        setMostrarSugestoes(false);
-    }
+    } else { setMostrarSugestoes(false); }
   };
 
   const selecionarMedicamento = (nome: string) => {
@@ -220,43 +200,22 @@ export default function DetalhesEncontrista() {
     setMostrarSugestoes(false);
   };
 
-  // Handlers de Ação
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase
-        .from('encontristas')
-        .update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes })
-        .eq('id', params.id);
+    const { error } = await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', params.id);
     if (!error) { setIsEditModalOpen(false); carregarDados(); }
     setSaving(false);
   };
 
   const handleSalvarMedicacao = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validação final de horário
-    if (medHorario.length !== 5 || !medHorario.includes(':')) {
-        alert("Por favor, preencha o horário corretamente (Ex: 14:00)");
-        return;
-    }
-
+    if (medHorario.length !== 5 || !medHorario.includes(':')) { alert("Horário inválido"); return; }
     const alerta = verificarAlergia(medNome);
     if (alerta && !confirm(alerta)) return;
-
     setSaving(true);
-    const { error } = await supabase.from('prescricoes').insert({
-        encontrista_id: params.id,
-        nome_medicamento: medNome,
-        dosagem: medDosagem,
-        posologia: medPosologia,
-        horario_inicial: medHorario
-      });
-    if (!error) {
-      setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario('');
-      setIsModalOpen(false);
-      carregarDados();
-    }
+    const { error } = await supabase.from('prescricoes').insert({ encontrista_id: params.id, nome_medicamento: medNome, dosagem: medDosagem, posologia: medPosologia, horario_inicial: medHorario });
+    if (!error) { setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario(''); setIsModalOpen(false); carregarDados(); }
     setSaving(false);
   };
 
@@ -269,256 +228,247 @@ export default function DetalhesEncontrista() {
   const abrirConfirmacaoAdministracao = (prescricao: Prescricao) => {
     const alerta = verificarAlergia(prescricao.nome_medicamento);
     if (alerta && !confirm(alerta)) return;
-
     setSelectedPrescricao(prescricao);
-
     const jaFoiAdministrado = historico.some(h => h.prescricao_id === prescricao.id);
-    
-    if (!jaFoiAdministrado && prescricao.horario_inicial) {
-        setHoraAdministracao(prescricao.horario_inicial); 
-    } else {
-        const agora = new Date();
-        const horaAtual = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        setHoraAdministracao(horaAtual);
-    }
-
+    if (!jaFoiAdministrado && prescricao.horario_inicial) { setHoraAdministracao(prescricao.horario_inicial); } 
+    else { setHoraAdministracao(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); }
     setIsAdministerModalOpen(true);
   };
 
   const confirmarAdministracao = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPrescricao || !horaAdministracao) return;
-
     const dataHoje = new Date();
     const [horas, minutos] = horaAdministracao.split(':').map(Number);
-    dataHoje.setHours(horas);
-    dataHoje.setMinutes(minutos);
-    dataHoje.setSeconds(0);
-
+    dataHoje.setHours(horas); dataHoje.setMinutes(minutos); dataHoje.setSeconds(0);
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    
-    await supabase.from('historico_administracao').insert({
-        prescricao_id: selectedPrescricao.id,
-        data_hora: dataHoje.toISOString(),
-        administrador: user?.email || "Desconhecido"
-    });
-
-    setSaving(false);
-    setIsAdministerModalOpen(false);
-    carregarDados();
+    await supabase.from('historico_administracao').insert({ prescricao_id: selectedPrescricao.id, data_hora: dataHoje.toISOString(), administrador: user?.email || "Desconhecido" });
+    setSaving(false); setIsAdministerModalOpen(false); carregarDados();
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2" /> Carregando...</div>;
   if (!pessoa) return null;
 
   return (
-    <div className="min-h-screen bg-orange-50 p-6 relative">
-      <div className="max-w-6xl mx-auto">
-        <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-orange-600 mb-6 font-medium"><ArrowLeft className="mr-2 h-5 w-5" /> Voltar para a Lista</Link>
+    <div className="min-h-screen bg-slate-50 relative pb-20">
+      
+      {/* --- HEADER --- */}
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 py-4">
+         <div className="max-w-3xl mx-auto flex items-center gap-4">
+             <Link href="/dashboard" className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
+                 <ArrowLeft size={20} />
+             </Link>
+             <h1 className="text-lg font-bold text-slate-800 truncate">{pessoa.nome}</h1>
+         </div>
+      </header>
 
-        {/* Header Pessoa */}
-        <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden mb-8">
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/20 p-3 rounded-full text-white"><User size={40} /></div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">{pessoa.nome}</h1>
-                <p className="text-orange-100 text-sm flex items-center gap-1"><Shield size={14} /> Responsável: {pessoa.responsavel || '-'}</p>
-              </div>
-            </div>
-            <div className="flex gap-3 items-center">
-                <button onClick={() => {
-                    if (pessoa) {
-                        setEditNome(pessoa.nome);
-                        setEditResponsavel(pessoa.responsavel || '');
-                        setEditAlergias(pessoa.alergias || '');
-                        setEditObservacoes(pessoa.observacoes || '');
-                        setIsEditModalOpen(true);
-                    }
-                }} className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors backdrop-blur-sm">
-                    <Pencil size={16} /> Editar Dados
-                </button>
-                <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pessoa.check_in ? 'bg-green-500 text-white' : 'bg-white/90 text-orange-700'}`}>
-                   <UserCheck size={16} /> {pessoa.check_in ? 'Check-in Realizado' : 'Aguardando Check-in'}
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        
+        {/* --- CARD DE PERFIL --- */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 relative overflow-hidden">
+           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-white shadow-orange-200 shadow-lg shrink-0">
+                    <User size={32} />
                 </div>
-            </div>
-          </div>
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-              <h3 className="text-red-800 font-bold flex items-center gap-2 mb-2"><AlertTriangle size={20} /> Alergias</h3>
-              <p className="text-red-700 font-medium">{pessoa.alergias || "Nenhuma alergia relatada."}</p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-              <h3 className="text-gray-700 font-bold mb-2">Observações</h3>
-              <p className="text-gray-600 italic">{pessoa.observacoes || "Sem observações adicionais."}</p>
-            </div>
-          </div>
+                <div className="flex-1">
+                    <h1 className="text-2xl font-bold text-slate-800 leading-tight">{pessoa.nome}</h1>
+                    <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
+                        <Shield size={14} />
+                        <span>Responsável: {pessoa.responsavel || 'N/D'}</span>
+                    </div>
+                </div>
+                <div className="flex gap-2 mt-2 sm:mt-0">
+                    <button onClick={() => {
+                        setEditNome(pessoa.nome); setEditResponsavel(pessoa.responsavel || '');
+                        setEditAlergias(pessoa.alergias || ''); setEditObservacoes(pessoa.observacoes || '');
+                        setIsEditModalOpen(true);
+                    }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+                        <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
+                    </button>
+                    <div className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 border ${pessoa.check_in ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                        {pessoa.check_in ? <><UserCheck size={16}/> Presente</> : 'Ausente'}
+                    </div>
+                </div>
+           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Coluna de Prescrições */}
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-md border border-gray-100 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-orange-500" /> Medicações</h2>
-              <button onClick={() => setIsModalOpen(true)} className="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-200 flex items-center gap-2"><Plus size={16} /> Adicionar</button>
+        {/* --- ALERTAS E OBSERVAÇÕES --- */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`p-5 rounded-3xl border ${pessoa.alergias ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
+                <h3 className={`text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2 ${pessoa.alergias ? 'text-red-600' : 'text-slate-400'}`}>
+                    <AlertTriangle size={16} /> Alergias
+                </h3>
+                <p className={`text-sm font-medium ${pessoa.alergias ? 'text-red-800' : 'text-slate-400 italic'}`}>
+                    {pessoa.alergias || "Nenhuma alergia relatada."}
+                </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-2">
+                    Observações
+                </h3>
+                <p className="text-sm text-slate-600 italic">
+                    {pessoa.observacoes || "Sem observações adicionais."}
+                </p>
+            </div>
+        </div>
+
+        {/* --- MEDICAÇÕES --- */}
+        <div>
+            <div className="flex justify-between items-end mb-4 px-1">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <Pill className="text-orange-500" /> Medicações
+                </h2>
+                <button onClick={() => setIsModalOpen(true)} className="bg-orange-50 text-orange-700 hover:bg-orange-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
+                    <Plus size={18} /> Adicionar
+                </button>
             </div>
             
             <div className="space-y-3">
-              {medicacoes.length === 0 && <p className="text-gray-400 text-center py-4">Nenhuma medicação.</p>}
-              {medicacoes.map(med => {
-                  const status = calcularStatus(med);
-                  return (
-                    <div key={med.id} className={`flex items-center justify-between p-4 border rounded-xl transition-all ${status.bg}`}>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-bold text-gray-800 text-lg">{med.nome_medicamento}</h3>
-                            <span className="text-xs bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-500">{med.dosagem}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm">
-                            <span className="text-gray-600 flex items-center gap-1"><Clock size={14}/> {med.posologia}</span>
-                            <span className={`font-bold ${status.cor}`}>{status.texto}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                          <button onClick={() => abrirConfirmacaoAdministracao(med)} className="bg-white text-green-600 border border-green-200 hover:bg-green-50 px-3 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-colors text-sm font-bold hover:scale-105 active:scale-95" title="Dar baixa">
-                            <CheckCircle2 size={18} /> Administrar
-                          </button>
-                          <button onClick={() => handleDelete(med.id)} className="text-gray-400 hover:text-red-600 p-2" title="Excluir"><Trash2 size={18} /></button>
-                      </div>
+                {medicacoes.length === 0 && (
+                    <div className="text-center py-10 bg-white rounded-3xl border border-slate-100 border-dashed">
+                        <p className="text-slate-400">Nenhuma medicação cadastrada.</p>
                     </div>
-                  );
-              })}
-            </div>
-          </div>
+                )}
 
-          {/* Histórico */}
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 h-fit">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6"><History className="text-blue-500" /> Histórico</h2>
-            <div className="relative border-l-2 border-blue-100 ml-3 space-y-6">
-                {historico.length === 0 && <p className="text-gray-400 text-sm pl-4">Sem registros.</p>}
+                {medicacoes.map(med => {
+                    const status = calcularStatus(med);
+                    return (
+                        <div key={med.id} className={`bg-white p-5 rounded-3xl shadow-sm border transition-all ${status.bg}`}>
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="font-bold text-slate-800 text-lg">{med.nome_medicamento}</h3>
+                                        <span className="text-xs font-medium bg-white px-2 py-0.5 rounded-md border border-slate-200 text-slate-500 shadow-sm">{med.dosagem}</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 text-sm mt-2">
+                                        <span className="text-slate-500 flex items-center gap-1 bg-slate-100/50 px-2 py-1 rounded-lg"><Clock size={14}/> {med.posologia}</span>
+                                        <span className={`${status.cor} flex items-center gap-1 px-2 py-1 rounded-lg bg-white/50`}>{status.texto}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 sm:border-none">
+                                    <button 
+                                        onClick={() => abrirConfirmacaoAdministracao(med)} 
+                                        className="flex-1 sm:flex-none bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold"
+                                    >
+                                        <CheckCircle2 size={18} /> Administrar
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(med.id)} 
+                                        className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" 
+                                        title="Excluir"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+
+        {/* --- HISTÓRICO --- */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                <History className="text-blue-500" /> Histórico
+            </h2>
+            <div className="relative border-l-2 border-slate-100 ml-3 space-y-8 pb-2">
+                {historico.length === 0 && <p className="text-slate-400 text-sm pl-6 italic">Nenhum registro ainda.</p>}
                 {historico.map((item) => (
                     <div key={item.id} className="ml-6 relative">
-                        <div className="absolute -left-[31px] bg-blue-500 h-4 w-4 rounded-full border-4 border-white shadow-sm"></div>
-                        <p className="text-xs text-gray-400 font-semibold">{formatarHora(item.data_hora)}</p>
-                        <h4 className="font-bold text-gray-800">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
-                        <p className="text-xs text-gray-500 truncate w-40" title={item.administrador}>{item.administrador}</p>
+                        <div className="absolute -left-[31px] top-1 bg-white p-1 rounded-full border border-slate-100 shadow-sm">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        </div>
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h4 className="font-bold text-slate-800">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
+                                <p className="text-xs text-slate-500 mt-0.5">{item.prescricao?.dosagem}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-sm font-medium text-slate-700">{formatarHora(item.data_hora).split(' - ')[0]}</p>
+                                <p className="text-[10px] text-slate-400">{formatarHora(item.data_hora).split(' - ')[1]}</p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                            <UserCheck size={10} /> {item.administrador}
+                        </p>
                     </div>
                 ))}
             </div>
-          </div>
         </div>
+
       </div>
 
-      {/* MODAL CONFIRMAÇÃO DE ADMINISTRAÇÃO */}
+      {/* --- MODAIS --- */}
+      
+      {/* MODAL CONFIRMAR DOSE */}
       {isAdministerModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200 border-t-4 border-green-500">
-                <div className="p-6">
-                    <h2 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
-                        <CheckCircle2 className="text-green-600" /> Confirmar Dose
-                    </h2>
-                    <p className="text-sm text-gray-500 mb-4">
-                        Confirme o horário exato da administração de <strong>{selectedPrescricao?.nome_medicamento}</strong>.
-                    </p>
-                    
-                    <form onSubmit={confirmarAdministracao}>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Horário Realizado</label>
-                            <div className="relative">
-                                <input 
-                                    type="time" 
-                                    required 
-                                    value={horaAdministracao} 
-                                    onChange={e => setHoraAdministracao(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-xl font-bold text-gray-800" 
-                                />
-                                <div className="absolute left-3 top-3 text-gray-400 pointer-events-none"><Clock size={20}/></div>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1 text-center">O próximo horário será calculado a partir deste.</p>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button type="button" onClick={() => setIsAdministerModalOpen(false)} className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200">Cancelar</button>
-                            <button type="submit" disabled={saving} className="flex-1 py-2 bg-green-600 text-white rounded-lg font-bold shadow-md hover:bg-green-700 flex justify-center items-center gap-2">
-                                {saving ? <Loader2 className="animate-spin h-4 w-4"/> : 'Confirmar'}
-                            </button>
-                        </div>
-                    </form>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200">
+                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="text-emerald-600 w-6 h-6" />
                 </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Confirmar Dose</h2>
+                <p className="text-slate-500 text-sm mb-6">
+                    Administrar <strong>{selectedPrescricao?.nome_medicamento}</strong> agora?
+                </p>
+                <form onSubmit={confirmarAdministracao}>
+                    <div className="mb-6">
+                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Horário Realizado</label>
+                        <div className="relative">
+                            <input type="time" required value={horaAdministracao} onChange={e => setHoraAdministracao(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xl font-bold text-slate-800 tracking-wider" />
+                            <div className="absolute left-3.5 top-4 text-slate-400 pointer-events-none"><CalendarClock size={20}/></div>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <button type="button" onClick={() => setIsAdministerModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                        <button type="submit" disabled={saving} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all flex justify-center items-center gap-2">
+                            {saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Confirmar'}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
       )}
 
       {/* MODAL NOVA MEDICAÇÃO */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-visible animate-in fade-in zoom-in duration-200">
-            <div className="bg-orange-600 px-6 py-4 flex justify-between items-center rounded-t-xl">
-              <h2 className="text-white font-bold text-lg flex items-center gap-2"><Pill size={20}/> Nova Medicação</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-white"><X size={24}/></button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800">Nova Medicação</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
             </div>
-            <form onSubmit={handleSalvarMedicacao} className="p-6 space-y-4">
+            <form onSubmit={handleSalvarMedicacao} className="space-y-5">
               <div className="relative" ref={wrapperRef}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome do Medicamento</label>
                   <div className="relative">
-                    <input 
-                        type="text" 
-                        required 
-                        value={medNome} 
-                        onChange={handleNomeChange} 
-                        onFocus={() => { if(medNome) setMostrarSugestoes(true); }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-900" 
-                        placeholder="Digite para buscar..." 
-                        autoFocus 
-                        autoComplete="off"
-                    />
-                    <div className="absolute right-3 top-2.5 text-gray-400 pointer-events-none"><ChevronDown size={16}/></div>
+                    <input type="text" required value={medNome} onChange={handleNomeChange} onFocus={() => { if(medNome) setMostrarSugestoes(true); }} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800 font-medium" placeholder="Digite para buscar..." autoFocus autoComplete="off" />
+                    <div className="absolute right-3.5 top-3.5 text-slate-400 pointer-events-none"><ChevronDown size={18}/></div>
                   </div>
                   {mostrarSugestoes && sugestoes.length > 0 && (
-                    <ul className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-60 overflow-y-auto shadow-xl">
+                    <ul className="absolute z-50 w-full bg-white border border-slate-100 rounded-xl mt-2 max-h-48 overflow-y-auto shadow-xl py-1">
                         {sugestoes.map(sugestao => (
-                            <li key={sugestao.id} onClick={() => selecionarMedicamento(sugestao.nome)} className="px-4 py-2 hover:bg-orange-50 cursor-pointer text-gray-800 text-sm border-b border-gray-50 last:border-none transition-colors">{sugestao.nome}</li>
+                            <li key={sugestao.id} onClick={() => selecionarMedicamento(sugestao.nome)} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer text-slate-700 text-sm border-b border-slate-50 last:border-none transition-colors">{sugestao.nome}</li>
                         ))}
                     </ul>
                   )}
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" placeholder="Ex: 500mg" /></div>
-                
-                {/* CAMPO HORÁRIO COM MÁSCARA */}
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
-                    <input 
-                        type="text" 
-                        required 
-                        value={medHorario} 
-                        onChange={handleHorarioChange} 
-                        className="w-full px-3 py-2 border rounded-lg text-gray-900 text-center tracking-wider font-medium" 
-                        placeholder="00:00"
-                        maxLength={5} 
-                    />
-                </div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dosagem</label><input type="text" required value={medDosagem} onChange={e => setMedDosagem(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" placeholder="Ex: 500mg" /></div>
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Horário</label><input type="text" required value={medHorario} onChange={handleHorarioChange} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800 text-center tracking-wider font-medium" placeholder="00:00" maxLength={5} /></div>
               </div>
-              
-              {/* CAMPO POSOLOGIA COM AUTOCORREÇÃO */}
               <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Posologia</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={medPosologia} 
-                    onChange={e => setMedPosologia(e.target.value)} 
-                    onBlur={handlePosologiaBlur}
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900" 
-                    placeholder="Ex: 6/6h" 
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Ex: digite &quot;8/8&quot; que o sistema corrige para &quot;8/8h&quot;</p>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Posologia</label>
+                  <input type="text" required value={medPosologia} onChange={e => setMedPosologia(e.target.value)} onBlur={handlePosologiaBlur} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" placeholder="Ex: 8/8h" />
               </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-sm disabled:opacity-50 transition-colors">Salvar</button>
+              <div className="pt-2">
+                <button type="submit" disabled={saving} className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-lg shadow-orange-200 disabled:opacity-70 transition-all flex justify-center items-center gap-2">
+                    {saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Salvar Medicação'}
+                </button>
               </div>
             </form>
           </div>
@@ -527,22 +477,23 @@ export default function DetalhesEncontrista() {
 
       {/* MODAL EDIÇÃO */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-gray-800 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-white font-bold text-lg flex items-center gap-2"><Pencil size={20}/> Editar Dados</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="text-white/80 hover:text-white hover:bg-gray-700 rounded-full p-1 transition-colors"><X size={24}/></button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800">Editar Dados</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
             </div>
-            <form onSubmit={handleUpdatePessoa} className="p-6 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label><input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" /></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label><input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Alergias</label><input type="text" value={editAlergias} onChange={e => setEditAlergias(e.target.value)} className="w-full px-3 py-2 border border-red-200 bg-red-50 rounded-lg text-red-900" /></div>
+            <form onSubmit={handleUpdatePessoa} className="space-y-4">
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label><input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800" /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Responsável</label><input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800" /></div>
+                <div><label className="block text-xs font-bold text-red-500 uppercase mb-1">Alergias</label><input type="text" value={editAlergias} onChange={e => setEditAlergias(e.target.value)} className="w-full px-4 py-2.5 bg-red-50 border border-red-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-300 text-red-800" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" /></div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg flex items-center gap-2">{saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={18}/> Salvar Alterações</>}</button>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800" /></div>
+              <div className="pt-2">
+                <button type="submit" disabled={saving} className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold shadow-lg disabled:opacity-70 transition-all flex justify-center items-center gap-2">
+                    {saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Salvar Alterações'}
+                </button>
               </div>
             </form>
           </div>
