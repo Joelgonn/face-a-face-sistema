@@ -16,6 +16,7 @@ const supabaseAdmin = createClient(
 );
 
 export async function listarUsuarios() {
+  // A lista de usuários já retorna o campo 'banned_until'
   const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
   if (error) throw error;
   return users;
@@ -28,6 +29,23 @@ export async function excluirUsuario(userId: string) {
     return { success: false, message: error.message };
   }
 
-  revalidatePath('/dashboard/equipe'); // Atualiza a lista na tela
+  revalidatePath('/dashboard/equipe');
   return { success: true, message: 'Usuário removido com sucesso.' };
+}
+
+// NOVA FUNÇÃO: Pausar/Retomar
+export async function alternarBloqueioUsuario(userId: string, deveBloquear: boolean) {
+  // Se deve bloquear, banimos por 100 anos ('876000h'). Se não, ban_duration é 'none'.
+  const duracao = deveBloquear ? '876000h' : 'none';
+
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    ban_duration: duracao
+  });
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  revalidatePath('/dashboard/equipe');
+  return { success: true, message: deveBloquear ? 'Acesso pausado.' : 'Acesso retomado.' };
 }
