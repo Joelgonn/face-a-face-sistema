@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 // --- Interfaces ---
 interface Historico { data_hora: string; }
@@ -178,9 +179,12 @@ export default function Dashboard() {
       {/* HEADER COM GLASS EFFECT */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-             <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center text-white font-bold shadow-orange-200 shadow-lg">F</div>
-             <h1 className="text-xl font-bold text-slate-800 hidden sm:block">Face a Face</h1>
+          <div className="flex items-center gap-3">
+             {/* LOGO */}
+             <Image src="/favicon.ico" alt="Logo" width={32} height={32} className="w-8 h-8 rounded-lg shadow-sm" />
+             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+               Face a Face <span className="hidden sm:inline-block text-xs font-normal text-slate-500 bg-slate-100 px-2 py-1 rounded-full">Painel</span>
+             </h1>
           </div>
           
           <div className="flex items-center gap-2">
