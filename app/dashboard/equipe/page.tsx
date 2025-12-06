@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
 import { listarUsuarios, excluirUsuario, alternarBloqueioUsuario } from '@/app/actions/equipe';
-import { Trash2, User, Shield, Loader2, ArrowLeft, Lock, PauseCircle, PlayCircle, Calendar, Clock } from 'lucide-react';
+import { Trash2, User, Shield, Loader2, ArrowLeft, Lock, PauseCircle, PlayCircle, Calendar, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 // Tipo do usuário retornado pelo Supabase
@@ -21,6 +21,10 @@ export default function GestaoEquipe() {
   const [loading, setLoading] = useState(true);
   
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Estados para o Modal de Exclusão
+  const [userToDelete, setUserToDelete] = useState<{id: string, email: string} | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   const supabase = createClient();
 
@@ -44,16 +48,28 @@ export default function GestaoEquipe() {
     init();
   }, [supabase]);
 
-  const handleDelete = async (id: string, email: string) => {
-    const confirmacao = prompt(`Para excluir ${email}, digite "DELETAR" abaixo:\n(Isso apaga a conta permanentemente)`);
-    if (confirmacao !== "DELETAR") return;
+  // 1. Abre o Modal
+  const solicitarExclusao = (id: string, email: string) => {
+    setUserToDelete({ id, email });
+    setDeleteConfirmation('');
+  };
 
-    setProcessingId(id);
-    const resultado = await excluirUsuario(id);
+  // 2. Executa a exclusão (Chamada pelo Modal)
+  const confirmarExclusao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!userToDelete) return;
+    if (deleteConfirmation !== 'DELETAR') {
+        alert("Digite DELETAR corretamente para confirmar.");
+        return;
+    }
+
+    setProcessingId(userToDelete.id);
+    const resultado = await excluirUsuario(userToDelete.id);
     
     if (resultado.success) {
-        setUsuarios(prev => prev.filter(u => u.id !== id));
-        alert("Enfermeiro removido com sucesso.");
+        setUsuarios(prev => prev.filter(u => u.id !== userToDelete.id));
+        setUserToDelete(null); // Fecha modal
     } else {
         alert("Erro: " + resultado.message);
     }
@@ -176,7 +192,7 @@ export default function GestaoEquipe() {
                                 </button>
 
                                 <button 
-                                    onClick={() => handleDelete(u.id, u.email || 'Sem email')}
+                                    onClick={() => solicitarExclusao(u.id, u.email || 'Sem email')}
                                     disabled={isProcessing}
                                     className="w-12 flex items-center justify-center rounded-xl bg-white border border-red-100 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
                                     title="Revogar Acesso"
@@ -195,6 +211,58 @@ export default function GestaoEquipe() {
                 );
             })}
         </div>
+
+        {/* --- MODAL DE EXCLUSÃO ESTILIZADO --- */}
+        {userToDelete && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
+                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                        <AlertTriangle className="text-red-500 w-8 h-8" />
+                    </div>
+                    <h2 className="text-slate-800 font-bold text-xl mb-2">Excluir Membro?</h2>
+                    <p className="text-slate-500 text-sm mb-1">
+                        Você está prestes a remover o acesso de:
+                    </p>
+                    <p className="text-slate-800 font-bold mb-6 bg-slate-50 py-1 px-3 rounded-lg inline-block border border-slate-200">
+                        {userToDelete.email}
+                    </p>
+                    
+                    <p className="text-xs text-red-600 font-medium mb-4 uppercase tracking-wide">
+                        Digite &quot;DELETAR&quot; para confirmar
+                    </p>
+
+                    <form onSubmit={confirmarExclusao} className="space-y-4">
+                        <div className="relative">
+                            <Trash2 className="absolute left-3.5 top-3 h-5 w-5 text-red-300" />
+                            <input 
+                                type="text" 
+                                value={deleteConfirmation} 
+                                onChange={e => setDeleteConfirmation(e.target.value)} 
+                                className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 text-center text-slate-800 font-bold tracking-widest placeholder-slate-300 uppercase" 
+                                placeholder="DELETAR" 
+                                autoFocus 
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                                type="button" 
+                                onClick={() => {setUserToDelete(null); setDeleteConfirmation('')}} 
+                                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                type="submit" 
+                                disabled={deleteConfirmation !== 'DELETAR' || processingId === userToDelete.id} 
+                                className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {processingId === userToDelete.id ? <Loader2 className="animate-spin h-5 w-5"/> : 'EXCLUIR'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
 
       </main>
     </div>
