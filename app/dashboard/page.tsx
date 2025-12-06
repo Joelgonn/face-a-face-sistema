@@ -6,7 +6,7 @@ import { zerarSistemaCompleto } from '@/app/actions/system';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown, FileText
+  ChevronDown, FileText, CheckCircle2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -52,8 +52,11 @@ export default function Dashboard() {
   // Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
-  const [resetError, setResetError] = useState<string | null>(null); // <--- NOVO ESTADO DE ERRO
+  const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+
+  // Modal Check-in (NOVO)
+  const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -91,7 +94,7 @@ export default function Dashboard() {
       return { cor: 'bg-slate-100 text-slate-400 border-slate-200', texto: 'Sem meds', prioridade: 0 };
     }
     
-    let statusGeral = 3; // 3=Ok, 2=Atenção, 1=Atrasado
+    let statusGeral = 3; 
     
     for (const med of pessoa.prescricoes) {
       const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
@@ -122,10 +125,23 @@ export default function Dashboard() {
     return { cor: 'bg-green-100 text-green-700 border-green-200', texto: 'Em dia', prioridade: 1 };
   };
 
-  const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
-    if (!confirm(`${currentStatus ? "CANCELAR" : "CONFIRMAR"} presença de ${nome}?`)) return;
-    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
-    await supabase.from('encontristas').update({ check_in: !currentStatus }).eq('id', id);
+  // 1. Apenas abre o modal
+  const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => {
+    setCheckInTarget({ id, status: currentStatus, nome });
+  };
+
+  // 2. Executa a ação quando confirmado no modal
+  const confirmCheckIn = async () => {
+    if (!checkInTarget) return;
+    
+    const { id, status } = checkInTarget;
+    
+    // Atualização Otimista (Muda na tela antes de ir pro banco)
+    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !status } : p));
+    setCheckInTarget(null); // Fecha modal imediatamente
+
+    // Atualiza no banco
+    await supabase.from('encontristas').update({ check_in: !status }).eq('id', id);
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
@@ -153,7 +169,7 @@ export default function Dashboard() {
 
   const handleZerarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetError(null); // Limpa erro anterior
+    setResetError(null);
     setIsResetting(true);
 
     const resultado = await zerarSistemaCompleto(resetPassword);
@@ -162,10 +178,8 @@ export default function Dashboard() {
       setEncontristas([]);
       setIsResetModalOpen(false);
       setResetPassword('');
-      // Aqui sim podemos usar um alert ou toast de sucesso se quiser, ou só fechar
       alert(resultado.message); 
     } else {
-      // EM VEZ DE ALERT, SETAMOS O ESTADO DE ERRO
       setResetError(resultado.message);
     }
 
@@ -310,7 +324,8 @@ export default function Dashboard() {
                       <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-bold text-gray-800 hover:text-orange-600">{pessoa.nome}</Link>
                       {pessoa.responsavel && <p className="text-sm text-gray-500">Resp: {pessoa.responsavel}</p>}
                    </div>
-                   <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                   {/* Botão abre o novo modal */}
+                   <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                       {pessoa.check_in ? <UserCheck size={20}/> : <UserX size={20}/>}
                    </button>
                 </div>
@@ -347,7 +362,8 @@ export default function Dashboard() {
                       <td className="p-4 text-sm text-gray-400 font-mono">#{pessoa.id}</td>
                       <td className="p-4 font-medium text-gray-800"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:underline decoration-orange-300 underline-offset-2">{pessoa.nome}</Link></td>
                       <td className="p-4 text-center">
-                        <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'}`}>
+                        {/* Botão abre o novo modal */}
+                        <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'}`}>
                             {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
                         </button>
                       </td>
@@ -362,6 +378,52 @@ export default function Dashboard() {
         </div>
 
       </main>
+
+      {/* --- MODAIS --- */}
+
+      {/* MODAL DE CHECK-IN / CHECK-OUT (NOVO) */}
+      {checkInTarget && (
+         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center">
+                
+                {/* Ícone Dinâmico */}
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${checkInTarget.status ? 'bg-red-50' : 'bg-green-50'}`}>
+                    {checkInTarget.status 
+                        ? <UserX className="w-8 h-8 text-red-500" /> 
+                        : <CheckCircle2 className="w-8 h-8 text-green-500" />
+                    }
+                </div>
+
+                <h2 className="text-xl font-bold text-gray-800 mb-2">
+                    {checkInTarget.status ? 'Remover Presença?' : 'Confirmar Presença?'}
+                </h2>
+                
+                <p className="text-gray-500 text-sm mb-6">
+                    {checkInTarget.status ? 'Deseja marcar como ausente:' : 'Deseja marcar como presente:'} <br/>
+                    <span className="font-bold text-gray-800 text-base">{checkInTarget.nome}</span>
+                </p>
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setCheckInTarget(null)} 
+                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={confirmCheckIn} 
+                        className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+                            checkInTarget.status 
+                            ? 'bg-red-500 hover:bg-red-600 shadow-red-200' 
+                            : 'bg-green-600 hover:bg-green-700 shadow-green-200'
+                        }`}
+                    >
+                        {checkInTarget.status ? 'Remover' : 'Confirmar'}
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
 
       {/* MODAL NOVO ENCONTRISTA */}
       {isModalOpen && (
@@ -389,7 +451,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL ZERAR SISTEMA (COM ERRO ESTILIZADO) */}
+      {/* MODAL ZERAR SISTEMA */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
@@ -399,7 +461,6 @@ export default function Dashboard() {
              <h2 className="text-red-800 font-bold text-xl mb-2">Zerar Sistema?</h2>
              <p className="text-red-500 text-sm mb-6">Essa ação é irreversível. Todos os encontristas e históricos serão apagados.</p>
              
-             {/* ÁREA DE ERRO NOVA */}
              {resetError && (
                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 text-sm animate-in slide-in-from-top-1 justify-center">
                     <AlertCircle size={18} />
@@ -415,7 +476,7 @@ export default function Dashboard() {
                         value={resetPassword} 
                         onChange={e => {
                             setResetPassword(e.target.value);
-                            if (resetError) setResetError(null); // Limpa erro ao digitar
+                            if (resetError) setResetError(null);
                         }} 
                         className={`w-full pl-11 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 text-center text-gray-800 font-bold tracking-widest transition-colors ${resetError ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} 
                         placeholder="Senha..." 
