@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown 
+  ChevronDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -65,7 +65,6 @@ export default function Dashboard() {
       .order('nome', { ascending: true });
 
     if (error) console.error(error);
-    // Correção de tipagem
     else setEncontristas((data as unknown as Encontrista[]) || []);
     setLoading(false);
   }, [supabase]);
@@ -188,7 +187,15 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
-            {isAdmin && <Link href="/dashboard/equipe" className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors" title="Equipe"><Shield size={20}/></Link>}
+            {isAdmin && (
+                <Link 
+                    href="/dashboard/equipe" 
+                    className="p-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-full transition-colors" 
+                    title="Equipe"
+                >
+                    <Shield size={20}/>
+                </Link>
+            )}
             <Link href="/dashboard/medicamentos" className="p-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-full transition-colors font-medium flex items-center gap-2"><Pill size={20}/><span className="hidden sm:inline">Meds</span></Link>
             <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"><LogOut size={20}/></button>
           </div>
@@ -228,23 +235,31 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-3 text-slate-400 h-5 w-5" />
-            <input type="text" placeholder="Buscar por nome ou ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-slate-800 shadow-sm" />
+            <input 
+                type="text" 
+                placeholder="Buscar por nome ou ID..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-slate-800 shadow-sm" 
+            />
           </div>
           
           <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
             {isAdmin && (
                 <>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm whitespace-nowrap transition-colors">
-                        {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} <span className="hidden lg:inline">Importar</span>
+                    {/* ESTILO LARANJA E RESPONSIVO */}
+                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-orange-600 border border-orange-200 hover:bg-orange-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                        {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} <span className="hidden md:inline">Importar</span>
                     </button>
-                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 shadow-sm whitespace-nowrap transition-colors">
-                        <Trash2 size={18} /> <span className="hidden lg:inline">Zerar</span>
+                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                        <Trash2 size={18} /> <span className="hidden md:inline">Zerar</span>
                     </button>
                 </>
             )}
-            <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-md shadow-orange-200 active:scale-95 transition-all whitespace-nowrap">
-                <Plus size={20} /> Novo
+            {/* ESTILO RESPONSIVO: ÍCONE NO MOBILE */}
+            <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md shadow-orange-200 active:scale-95 transition-all whitespace-nowrap">
+                <Plus size={20} /> <span className="hidden md:inline">Novo</span>
             </button>
           </div>
         </div>
