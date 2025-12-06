@@ -102,16 +102,16 @@ export default function RelatorioPage() {
         {/* Header (Esconde na impressão) */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 print:hidden">
              <div className="flex items-center gap-4 w-full md:w-auto mb-4 md:mb-0">
-                <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-orange-600 font-medium transition-colors">
+                <Link href="/dashboard" className="inline-flex items-center text-gray-400 hover:text-orange-600 font-medium transition-colors">
                     <ArrowLeft className="mr-2 h-5 w-5" /> Voltar
                 </Link>
-                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    <FileText className="text-orange-500" /> Relatório Geral
+                <h1 className="text-2xl font-bold text-orange-600 flex items-center gap-2">
+                    <FileText className="text-orange-600" /> Relatório Geral
                 </h1>
              </div>
              
              <div className="flex gap-2 w-full md:w-auto">
-                <button onClick={handlePrint} className="flex-1 md:flex-none items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors flex">
+                <button onClick={handlePrint} className="flex-1 md:flex-none items-center justify-center gap-2 bg-white border border-orange-200 text-orange-600 hover:bg-orange-50 px-4 py-2 rounded-lg font-medium shadow-sm transition-colors flex">
                     <Printer size={18} /> Imprimir
                 </button>
                 <button onClick={handleExportCSV} className="flex-1 md:flex-none items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium shadow-md transition-colors flex">
@@ -130,7 +130,7 @@ export default function RelatorioPage() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-0">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200 print:bg-gray-100 print:text-black">
+                    <thead className="bg-slate-50 text-orange-600 text-xs uppercase tracking-wider border-b border-slate-200 print:bg-gray-100 print:text-black">
                         <tr>
                             <th className="p-4">Data / Hora</th>
                             <th className="p-4">Paciente</th>

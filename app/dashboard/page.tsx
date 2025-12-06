@@ -180,8 +180,8 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
              <Image src="/favicon.ico" alt="Logo" width={32} height={32} className="w-8 h-8 rounded-lg shadow-sm" />
-             <h1 className="text-xl font-bold text-orange-800 flex items-center gap-2">
-               Face a Face <span className="hidden sm:inline-block text-xs font-normal text-orange-600 bg-orange-50 px-2 py-1 rounded-full">Igreja Batista Apascentar</span>
+             <h1 className="text-xl font-bold text-orange-600 flex items-center gap-2">
+               Face a Face <span className="hidden sm:inline-block text-xs font-normal text-orange-500 bg-orange-50 px-2 py-1 rounded-full">Igreja Batista Apascentar</span>
              </h1>
           </div>
           
@@ -297,7 +297,7 @@ export default function Dashboard() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-orange-50 text-orange-800 text-xs uppercase tracking-wider border-b border-orange-100">
+                <tr className="bg-orange-50 text-orange-600 text-xs uppercase tracking-wider border-b border-orange-100">
                   <th className="p-4 font-semibold">Status</th>
                   <th className="p-4 font-semibold">ID</th>
                   <th className="p-4 font-semibold">Nome</th>

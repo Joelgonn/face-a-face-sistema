@@ -100,7 +100,7 @@ export default function GestaoEquipe() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2"/> Carregando equipe...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 relative pb-20">
+    <div className="min-h-screen bg-orange-50 relative pb-20">
       
       {/* --- HEADER --- */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 py-4">
@@ -110,8 +110,8 @@ export default function GestaoEquipe() {
                      <ArrowLeft size={20} />
                  </Link>
                  <div>
-                    <h1 className="text-lg font-bold text-slate-800">Gestão de Equipe</h1>
-                    <p className="text-xs text-slate-500 hidden sm:block">Gerencie o acesso dos enfermeiros</p>
+                    <h1 className="text-lg font-bold text-orange-600">Gestão de Equipe</h1>
+                    <p className="text-xs text-orange-600 hidden sm:block">Gerencie o acesso dos enfermeiros</p>
                  </div>
              </div>
              <div className="bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 text-orange-700 text-xs font-bold flex items-center gap-2">

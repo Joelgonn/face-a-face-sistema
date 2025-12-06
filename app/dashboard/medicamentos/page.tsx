@@ -140,17 +140,17 @@ export default function GestaoMedicamentos() {
   const filteredMeds = medicamentos.filter(m => m.nome.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="min-h-screen bg-slate-50 relative pb-20">
+    <div className="min-h-screen bg-orange-50 relative pb-20">
       
       {/* HEADER */}
-      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 py-4">
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-orange-200 shadow-sm px-4 py-4">
          <div className="max-w-5xl mx-auto flex items-center gap-4">
              <Link href="/dashboard" className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
                  <ArrowLeft size={20} />
              </Link>
              <div>
-                <h1 className="text-lg font-bold text-slate-800">Base de Medicamentos</h1>
-                <p className="text-xs text-slate-500 hidden sm:block">Gerencie o catálogo de remédios</p>
+                <h1 className="text-lg font-bold text-orange-600">Base de Medicamentos</h1>
+                <p className="text-xs text-orange-600 hidden sm:block">Gerencie o catálogo de remédios</p>
              </div>
          </div>
       </header>
@@ -222,7 +222,7 @@ export default function GestaoMedicamentos() {
                                     {isAdmin && (
                                         <button 
                                             onClick={(e) => requestDelete(med.id, e)} 
-                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                            className="p-2 text-orange-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                         >
                                             <Trash2 size={18} />
                                         </button>
