@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, 
   Plus, X, Trash2, Clock, CheckCircle2, Pencil, Loader2, 
-  ChevronDown, CalendarClock 
+  ChevronDown, ChevronUp, CalendarClock, Info 
 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -53,6 +53,9 @@ export default function DetalhesEncontrista() {
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Estado para Expandir/Ocultar Informações
+  const [infoExpanded, setInfoExpanded] = useState(false);
+
   // Modal Nova Medicação
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -293,25 +296,50 @@ export default function DetalhesEncontrista() {
            </div>
         </div>
 
-        {/* --- ALERTAS E OBSERVAÇÕES --- */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className={`p-5 rounded-3xl border ${pessoa.alergias ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
-                <h3 className={`text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2 ${pessoa.alergias ? 'text-red-600' : 'text-slate-400'}`}>
-                    <AlertTriangle size={16} /> Alergias
-                </h3>
-                <p className={`text-sm font-medium ${pessoa.alergias ? 'text-red-800' : 'text-slate-400 italic'}`}>
-                    {pessoa.alergias || "Nenhuma alergia relatada."}
-                </p>
-            </div>
+        {/* --- ACORDEÃO DE INFORMAÇÕES (ALERGIAS E OBSERVAÇÕES) --- */}
+        <div>
+            <button 
+                onClick={() => setInfoExpanded(!infoExpanded)}
+                className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all active:scale-[0.99] ${
+                    pessoa.alergias 
+                    ? 'bg-red-50 border-red-100 text-red-700' 
+                    : 'bg-white border-slate-200 text-slate-600'
+                }`}
+            >
+                <div className="flex items-center gap-2 font-bold">
+                    <Info size={20} />
+                    <span>Informações Adicionais</span>
+                    {pessoa.alergias && (
+                        <span className="text-[10px] bg-red-200 text-red-800 px-2 py-0.5 rounded-full animate-pulse">
+                            ⚠️ POSSUI ALERGIAS
+                        </span>
+                    )}
+                </div>
+                {infoExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
 
-            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-2">
-                    Observações
-                </h3>
-                <p className="text-sm text-slate-600 italic">
-                    {pessoa.observacoes || "Sem observações adicionais."}
-                </p>
-            </div>
+            {/* Conteúdo Expansível */}
+            {infoExpanded && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                    <div className={`p-5 rounded-3xl border ${pessoa.alergias ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
+                        <h3 className={`text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2 ${pessoa.alergias ? 'text-red-600' : 'text-slate-400'}`}>
+                            <AlertTriangle size={16} /> Alergias
+                        </h3>
+                        <p className={`text-sm font-medium ${pessoa.alergias ? 'text-red-800' : 'text-slate-400 italic'}`}>
+                            {pessoa.alergias || "Nenhuma alergia relatada."}
+                        </p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-2">
+                            Observações
+                        </h3>
+                        <p className="text-sm text-slate-600 italic">
+                            {pessoa.observacoes || "Sem observações adicionais."}
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
 
         {/* --- MEDICAÇÕES --- */}
