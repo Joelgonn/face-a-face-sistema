@@ -50,13 +50,10 @@ const formatarHora = (isoString: string) => {
   };
 };
 
-// NOVA FUNÇÃO: Transforma email em Nome (ex: joel.gonn@... -> Joel Gonn)
 const formatarNomeEnfermeiro = (email: string) => {
     if (!email) return 'Desconhecido';
-    const parteNome = email.split('@')[0]; // Pega antes do @
-    // Remove números e substitui pontos/underline por espaço
+    const parteNome = email.split('@')[0]; 
     const nomeLimpo = parteNome.replace(/[0-9]/g, '').replace(/[._]/g, ' ');
-    // Capitaliza a primeira letra de cada palavra
     return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim();
 };
 
@@ -81,6 +78,9 @@ export default function DetalhesEncontrista() {
   const [isAdministerModalOpen, setIsAdministerModalOpen] = useState(false);
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
+
+  // Modal Excluir Medicação (NOVO)
+  const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
 
   // Modal de Alerta de Alergia
   const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
@@ -248,10 +248,19 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Excluir?")) return;
-    const { error } = await supabase.from('prescricoes').delete().eq('id', id);
-    if (!error) carregarDados();
+  // Abre modal de exclusão
+  const openDeleteModal = (id: number) => {
+    setMedicationToDelete(id);
+  };
+
+  // Confirma e deleta
+  const confirmDeleteMedication = async () => {
+    if (!medicationToDelete) return;
+    const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
+    if (!error) {
+        setMedicationToDelete(null);
+        carregarDados();
+    }
   };
 
   const executeAbrirConfirmacao = (prescricao: Prescricao) => {
@@ -421,7 +430,7 @@ export default function DetalhesEncontrista() {
                                         <CheckCircle2 size={18} /> Administrar
                                     </button>
                                     <button 
-                                        onClick={() => handleDelete(med.id)} 
+                                        onClick={() => openDeleteModal(med.id)} 
                                         className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" 
                                         title="Excluir"
                                     >
@@ -435,30 +444,22 @@ export default function DetalhesEncontrista() {
             </div>
         </div>
 
-        {/* --- HISTÓRICO MELHORADO --- */}
+        {/* --- HISTÓRICO --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
                 <History className="text-blue-500" /> Histórico
             </h2>
             <div className="relative space-y-6">
-                
-                {/* Linha vertical contínua */}
-                {historico.length > 0 && (
-                    <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>
-                )}
-
+                {historico.length > 0 && <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>}
                 {historico.length === 0 && <p className="text-slate-400 text-sm italic text-center">Nenhum registro ainda.</p>}
                 
                 {historico.map((item) => {
                     const { hora, data } = formatarHora(item.data_hora);
                     return (
                         <div key={item.id} className="relative pl-8">
-                            {/* Bolinha/Check da Timeline */}
                             <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
                                 <Check size={10} className="text-emerald-700 stroke-[4]" />
                             </div>
-
-                            {/* Cartão do Histórico */}
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
@@ -487,9 +488,9 @@ export default function DetalhesEncontrista() {
 
       </div>
 
-      {/* --- MODAIS (Inalterados visualmente, mantendo a lógica) --- */}
+      {/* --- MODAIS --- */}
       
-      {/* NOVO: MODAL ALERTA DE ALERGIA */}
+      {/* MODAL ALERTA DE ALERGIA */}
       {allergyWarning && (
         <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 text-center border-4 border-red-100">
@@ -501,22 +502,32 @@ export default function DetalhesEncontrista() {
                 <p className="text-xl font-bold text-slate-800 mb-8 border-b-2 border-red-100 pb-2 inline-block">
                     {allergyWarning.message}
                 </p>
-                
-                <p className="text-sm text-slate-400 mb-6">Tem certeza que deseja prosseguir?</p>
-
                 <div className="flex flex-col gap-3">
-                    <button 
-                        onClick={allergyWarning.onConfirm} 
-                        className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
-                    >
+                    <button onClick={allergyWarning.onConfirm} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
                         <ThumbsUp size={18} /> Sim, estou ciente
                     </button>
-                    <button 
-                        onClick={() => setAllergyWarning(null)} 
-                        className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
-                    >
+                    <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
                         Cancelar
                     </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* NOVO: MODAL DE EXCLUSÃO DE PRESCRIÇÃO */}
+      {medicationToDelete !== null && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-red-50">
+                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Trash2 className="text-red-500 w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Excluir Medicação?</h2>
+                <p className="text-slate-500 text-sm mb-6">
+                    Isso removerá a prescrição e todo o histórico de administração.
+                </p>
+                <div className="flex gap-3">
+                    <button onClick={() => setMedicationToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                    <button onClick={confirmDeleteMedication} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Excluir</button>
                 </div>
             </div>
         </div>
