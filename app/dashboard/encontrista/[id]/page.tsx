@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, 
   Plus, X, Trash2, Clock, CheckCircle2, Pencil, Loader2, 
-  ChevronDown, ChevronUp, CalendarClock, ThumbsUp, Info 
+  ChevronDown, ChevronUp, CalendarClock, ThumbsUp, Info, Check 
 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -44,7 +44,20 @@ interface BaseMedicamento {
 // --- Funções Auxiliares ---
 const formatarHora = (isoString: string) => {
   const data = new Date(isoString);
-  return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + " - " + data.toLocaleDateString('pt-BR');
+  return {
+    hora: data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    data: data.toLocaleDateString('pt-BR')
+  };
+};
+
+// NOVA FUNÇÃO: Transforma email em Nome (ex: joel.gonn@... -> Joel Gonn)
+const formatarNomeEnfermeiro = (email: string) => {
+    if (!email) return 'Desconhecido';
+    const parteNome = email.split('@')[0]; // Pega antes do @
+    // Remove números e substitui pontos/underline por espaço
+    const nomeLimpo = parteNome.replace(/[0-9]/g, '').replace(/[._]/g, ' ');
+    // Capitaliza a primeira letra de cada palavra
+    return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim();
 };
 
 export default function DetalhesEncontrista() {
@@ -422,39 +435,59 @@ export default function DetalhesEncontrista() {
             </div>
         </div>
 
-        {/* --- HISTÓRICO --- */}
+        {/* --- HISTÓRICO MELHORADO --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
                 <History className="text-blue-500" /> Histórico
             </h2>
-            <div className="relative border-l-2 border-slate-100 ml-3 space-y-8 pb-2">
-                {historico.length === 0 && <p className="text-slate-400 text-sm pl-6 italic">Nenhum registro ainda.</p>}
-                {historico.map((item) => (
-                    <div key={item.id} className="ml-6 relative">
-                        <div className="absolute -left-[31px] top-1 bg-white p-1 rounded-full border border-slate-100 shadow-sm">
-                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        </div>
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h4 className="font-bold text-slate-800">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
-                                <p className="text-xs text-slate-500 mt-0.5">{item.prescricao?.dosagem}</p>
+            <div className="relative space-y-6">
+                
+                {/* Linha vertical contínua */}
+                {historico.length > 0 && (
+                    <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>
+                )}
+
+                {historico.length === 0 && <p className="text-slate-400 text-sm italic text-center">Nenhum registro ainda.</p>}
+                
+                {historico.map((item) => {
+                    const { hora, data } = formatarHora(item.data_hora);
+                    return (
+                        <div key={item.id} className="relative pl-8">
+                            {/* Bolinha/Check da Timeline */}
+                            <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
+                                <Check size={10} className="text-emerald-700 stroke-[4]" />
                             </div>
-                            <div className="text-right">
-                                <p className="text-sm font-medium text-slate-700">{formatarHora(item.data_hora).split(' - ')[0]}</p>
-                                <p className="text-[10px] text-slate-400">{formatarHora(item.data_hora).split(' - ')[1]}</p>
+
+                            {/* Cartão do Histórico */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 text-sm">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
+                                        <p className="text-xs text-slate-500 font-medium">{item.prescricao?.dosagem}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm font-bold text-slate-700">{hora}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase tracking-wide">{data}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50">
+                                    <div className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-500">
+                                        <User size={12} />
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        {formatarNomeEnfermeiro(item.administrador)}
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                            <UserCheck size={10} /> {item.administrador}
-                        </p>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
 
       </div>
 
-      {/* --- MODAIS --- */}
+      {/* --- MODAIS (Inalterados visualmente, mantendo a lógica) --- */}
       
       {/* NOVO: MODAL ALERTA DE ALERGIA */}
       {allergyWarning && (
