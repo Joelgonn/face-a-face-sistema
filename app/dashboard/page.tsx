@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
+import { zerarSistemaCompleto } from '@/app/actions/system';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
@@ -30,7 +31,7 @@ interface Encontrista {
 }
 
 export default function Dashboard() {
-  // Estados
+  // --- Estados ---
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,15 +39,20 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
-  // Modais
+  // Modais e Formulários
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Form Novo Encontrista
   const [novoNome, setNovoNome] = useState('');
   const [novoResponsavel, setNovoResponsavel] = useState('');
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
+  
+  // Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null); // <--- NOVO ESTADO DE ERRO
   const [isResetting, setIsResetting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,15 +87,20 @@ export default function Dashboard() {
   }, [buscarEncontristas, supabase]);
 
   const getStatusPessoa = (pessoa: Encontrista) => {
-    if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) return { cor: 'bg-slate-100 text-slate-400 border-slate-200', texto: 'Sem meds', prioridade: 0 };
+    if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
+      return { cor: 'bg-slate-100 text-slate-400 border-slate-200', texto: 'Sem meds', prioridade: 0 };
+    }
     
-    let statusGeral = 3;
+    let statusGeral = 3; // 3=Ok, 2=Atenção, 1=Atrasado
+    
     for (const med of pessoa.prescricoes) {
       const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
       if (!match) continue; 
+      
       const intervaloHoras = parseInt(match[1]);
       const historico = med.historico_administracao?.sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
       const ultimoRegistro = historico?.[0];
+      
       let dataBase = ultimoRegistro ? new Date(ultimoRegistro.data_hora) : null;
       
       if (!dataBase) {
@@ -101,8 +112,9 @@ export default function Dashboard() {
       }
 
       const diffMinutos = (dataBase.getTime() - new Date().getTime()) / 1000 / 60;
+      
       if (diffMinutos < 0) { statusGeral = 1; break; } 
-      else if (diffMinutos < 30) { statusGeral = Math.min(statusGeral, 2); }
+      else if (diffMinutos < 30) { statusGeral = Math.min(statusGeral, 2); } 
     }
 
     if (statusGeral === 1) return { cor: 'bg-red-100 text-red-700 border-red-200 animate-pulse', texto: 'Atrasado', prioridade: 3 };
@@ -120,19 +132,43 @@ export default function Dashboard() {
     e.preventDefault();
     if (!novoNome.trim()) return alert("Nome obrigatório!");
     setSaving(true);
-    const { error } = await supabase.from('encontristas').insert({ nome: novoNome, responsavel: novoResponsavel, alergias: novasAlergias, observacoes: novasObservacoes, check_in: false });
+    
+    const { error } = await supabase.from('encontristas').insert({ 
+      nome: novoNome, 
+      responsavel: novoResponsavel, 
+      alergias: novasAlergias, 
+      observacoes: novasObservacoes, 
+      check_in: false 
+    });
+
     if (!error) {
-      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes(''); setIsModalOpen(false); buscarEncontristas();
-    } else alert(error.message);
+      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes(''); 
+      setIsModalOpen(false); 
+      buscarEncontristas();
+    } else {
+      alert(error.message);
+    }
     setSaving(false);
   };
 
   const handleZerarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (resetPassword !== '123') { alert("Senha incorreta!"); setResetPassword(''); return; }
+    setResetError(null); // Limpa erro anterior
     setIsResetting(true);
-    const { error } = await supabase.from('encontristas').delete().gt('id', 0);
-    if (!error) { setEncontristas([]); setIsResetModalOpen(false); setResetPassword(''); }
+
+    const resultado = await zerarSistemaCompleto(resetPassword);
+
+    if (resultado.success) {
+      setEncontristas([]);
+      setIsResetModalOpen(false);
+      setResetPassword('');
+      // Aqui sim podemos usar um alert ou toast de sucesso se quiser, ou só fechar
+      alert(resultado.message); 
+    } else {
+      // EM VEZ DE ALERT, SETAMOS O ESTADO DE ERRO
+      setResetError(resultado.message);
+    }
+
     setIsResetting(false);
   };
 
@@ -175,7 +211,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-orange-50 relative pb-20">
       
-      {/* HEADER (Branco com borda laranja suave) */}
+      {/* HEADER */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-orange-100 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -204,7 +240,7 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         
-        {/* VISÃO GERAL - ACCORDION MOBILE (Estilo Card Clean) */}
+        {/* VISÃO GERAL - MOBILE */}
         <div className="md:hidden">
           <button onClick={() => setShowStats(!showStats)} className="w-full bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex items-center justify-between active:scale-[0.99] transition-transform">
             <div>
@@ -231,7 +267,7 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* BARRA DE AÇÕES (Layout Compacto) */}
+        {/* BARRA DE AÇÕES */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-3 text-gray-400 h-5 w-5" />
@@ -246,13 +282,12 @@ export default function Dashboard() {
                         {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} 
                         <span className="hidden lg:inline">Importar</span>
                     </button>
-                    <button onClick={() => setIsResetModalOpen(true)} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                    <button onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
                         <Trash2 size={18} /> 
                         <span className="hidden lg:inline">Zerar</span>
                     </button>
                 </>
             )}
-            {/* BOTÃO NOVO (Ícone no mobile, Texto no PC) */}
             <button onClick={() => setIsModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md shadow-orange-200 active:scale-95 transition-all whitespace-nowrap">
                 <Plus size={20} /> 
                 <span className="hidden md:inline">Novo</span>
@@ -260,9 +295,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- LISTA DE ENCONTRISTAS --- */}
-        
-        {/* 1. VERSÃO MOBILE (CARDS - Visual Clean) */}
+        {/* LISTAS (Mobile e Desktop) */}
         <div className="md:hidden space-y-3">
           {loading ? <div className="text-center py-8 text-gray-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-8 text-gray-400">Ninguém encontrado.</div> : sorted.map((pessoa) => {
              const status = getStatusPessoa(pessoa);
@@ -292,7 +325,6 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* 2. VERSÃO DESKTOP (TABELA - Estilo Laranja Suave) */}
         <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-orange-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -357,7 +389,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL ZERAR SISTEMA */}
+      {/* MODAL ZERAR SISTEMA (COM ERRO ESTILIZADO) */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
@@ -367,10 +399,28 @@ export default function Dashboard() {
              <h2 className="text-red-800 font-bold text-xl mb-2">Zerar Sistema?</h2>
              <p className="text-red-500 text-sm mb-6">Essa ação é irreversível. Todos os encontristas e históricos serão apagados.</p>
              
+             {/* ÁREA DE ERRO NOVA */}
+             {resetError && (
+                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 text-sm animate-in slide-in-from-top-1 justify-center">
+                    <AlertCircle size={18} />
+                    <span className="font-bold">{resetError}</span>
+                 </div>
+             )}
+
              <form onSubmit={handleZerarSistema} className="space-y-4">
                 <div className="relative">
                     <Lock className="absolute left-3.5 top-3 h-5 w-5 text-gray-400" />
-                    <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 text-center text-gray-800 font-bold tracking-widest" placeholder="Senha..." autoFocus />
+                    <input 
+                        type="password" 
+                        value={resetPassword} 
+                        onChange={e => {
+                            setResetPassword(e.target.value);
+                            if (resetError) setResetError(null); // Limpa erro ao digitar
+                        }} 
+                        className={`w-full pl-11 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 text-center text-gray-800 font-bold tracking-widest transition-colors ${resetError ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} 
+                        placeholder="Senha..." 
+                        autoFocus 
+                    />
                 </div>
                 <div className="flex gap-3">
                     <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Cancelar</button>
