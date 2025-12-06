@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown 
+  ChevronDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -38,6 +38,9 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
+  // Estado para o Modal de Confirmação de Check-in
+  const [checkInConfirmation, setCheckInConfirmation] = useState<{ id: number, statusAtual: boolean, nome: string } | null>(null);
+
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,7 +68,6 @@ export default function Dashboard() {
       .order('nome', { ascending: true });
 
     if (error) console.error(error);
-    // Correção de tipagem
     else setEncontristas((data as unknown as Encontrista[]) || []);
     setLoading(false);
   }, [supabase]);
@@ -111,10 +113,25 @@ export default function Dashboard() {
     return { cor: 'bg-emerald-100 text-emerald-700 border-emerald-200', texto: 'Em dia', prioridade: 1 };
   };
 
-  const toggleCheckIn = async (id: number, currentStatus: boolean, nome: string) => {
-    if (!confirm(`${currentStatus ? "CANCELAR" : "CONFIRMAR"} presença de ${nome}?`)) return;
-    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !currentStatus } : p));
-    await supabase.from('encontristas').update({ check_in: !currentStatus }).eq('id', id);
+  const solicitarCheckIn = (id: number, currentStatus: boolean, nome: string) => {
+    setCheckInConfirmation({ id, statusAtual: currentStatus, nome });
+  };
+
+  const confirmarCheckIn = async () => {
+    if (!checkInConfirmation) return;
+
+    const { id, statusAtual } = checkInConfirmation;
+    const novoStatus = !statusAtual;
+
+    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: novoStatus } : p));
+    setCheckInConfirmation(null);
+
+    const { error } = await supabase.from('encontristas').update({ check_in: novoStatus }).eq('id', id);
+
+    if (error) {
+        alert("Erro ao atualizar. Recarregando...");
+        buscarEncontristas();
+    }
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
@@ -176,11 +193,10 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50 relative pb-20">
       
-      {/* HEADER COM GLASS EFFECT */}
+      {/* HEADER */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
-             {/* LOGO */}
              <Image src="/favicon.ico" alt="Logo" width={32} height={32} className="w-8 h-8 rounded-lg shadow-sm" />
              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                Face a Face <span className="hidden sm:inline-block text-xs font-normal text-slate-500 bg-slate-100 px-2 py-1 rounded-full">Painel</span>
@@ -197,7 +213,7 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         
-        {/* VISÃO GERAL - ACCORDION MOBILE */}
+        {/* VISÃO GERAL */}
         <div className="md:hidden">
           <button onClick={() => setShowStats(!showStats)} className="w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between active:scale-[0.99] transition-transform">
             <div>
@@ -208,7 +224,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* CARDS ESTATÍSTICAS - ANIMADOS */}
+        {/* CARDS ESTATÍSTICAS */}
         <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-all duration-300 ${showStats ? 'block' : 'hidden md:grid'}`}>
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between card-hover">
                 <div><p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Inscritos</p><p className="text-3xl font-bold text-slate-800">{totalEncontristas}</p></div>
@@ -249,9 +265,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- LISTA DE ENCONTRISTAS --- */}
-        
-        {/* 1. VERSÃO MOBILE (CARDS) */}
+        {/* LISTA DE ENCONTRISTAS */}
         <div className="md:hidden space-y-3">
           {loading ? <div className="text-center py-8 text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-8 text-slate-400">Ninguém encontrado.</div> : sorted.map((pessoa) => {
              const status = getStatusPessoa(pessoa);
@@ -266,7 +280,7 @@ export default function Dashboard() {
                       <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-bold text-slate-800 hover:text-orange-600">{pessoa.nome}</Link>
                       {pessoa.responsavel && <p className="text-sm text-slate-500">Resp: {pessoa.responsavel}</p>}
                    </div>
-                   <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                   <button onClick={() => solicitarCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
                       {pessoa.check_in ? <UserCheck size={20}/> : <UserX size={20}/>}
                    </button>
                 </div>
@@ -281,7 +295,6 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* 2. VERSÃO DESKTOP (TABELA) */}
         <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -304,7 +317,7 @@ export default function Dashboard() {
                       <td className="p-4 text-sm text-slate-400 font-mono">#{pessoa.id}</td>
                       <td className="p-4 font-medium text-slate-800"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:underline decoration-orange-300 underline-offset-2">{pessoa.nome}</Link></td>
                       <td className="p-4 text-center">
-                        <button onClick={() => toggleCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
+                        <button onClick={() => solicitarCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
                             {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
                         </button>
                       </td>
@@ -320,7 +333,38 @@ export default function Dashboard() {
 
       </main>
 
-      {/* MODAL NOVO ENCONTRISTA */}
+      {/* MODAL CONFIRMAÇÃO CHECK-IN */}
+      {checkInConfirmation && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${!checkInConfirmation.statusAtual ? 'bg-green-100' : 'bg-red-50'}`}>
+                    {!checkInConfirmation.statusAtual ? <UserCheck className="text-green-600 w-8 h-8"/> : <UserX className="text-red-500 w-8 h-8"/>}
+                </div>
+                
+                <h2 className="text-xl font-bold text-slate-800 mb-2">
+                    {!checkInConfirmation.statusAtual ? "Confirmar Presença?" : "Cancelar Presença?"}
+                </h2>
+                
+                <p className="text-slate-500 mb-6">
+                    {!checkInConfirmation.statusAtual 
+                        ? `Marcar ${checkInConfirmation.nome} como presente?`
+                        : `Remover a presença de ${checkInConfirmation.nome}?`
+                    }
+                </p>
+                
+                <div className="flex gap-3">
+                    <button onClick={() => setCheckInConfirmation(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
+                        Não
+                    </button>
+                    <button onClick={confirmarCheckIn} className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg transition-all ${!checkInConfirmation.statusAtual ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}>
+                        Sim
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Modal Novo Encontrista */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -346,7 +390,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL ZERAR SISTEMA */}
+      {/* Modal Zerar Sistema */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
