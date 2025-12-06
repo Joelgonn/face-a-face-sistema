@@ -301,7 +301,7 @@ export default function DetalhesEncontrista() {
   if (!pessoa) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 relative pb-20">
+    <div className="min-h-screen bg-orange-50 relative pb-20">
       
       {/* --- HEADER --- */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 py-4">
@@ -309,7 +309,7 @@ export default function DetalhesEncontrista() {
              <Link href="/dashboard" className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
                  <ArrowLeft size={20} />
              </Link>
-             <h1 className="text-lg font-bold text-slate-800 truncate">{pessoa.nome}</h1>
+             <h1 className="text-lg font-bold text-orange-600 truncate">{pessoa.nome}</h1>
          </div>
       </header>
 
@@ -325,7 +325,7 @@ export default function DetalhesEncontrista() {
                     <h1 className="text-2xl font-bold text-slate-800 leading-tight">{pessoa.nome}</h1>
                     <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
                         <Shield size={14} />
-                        <span>Responsável: {pessoa.responsavel || 'N/D'}</span>
+                        <span>Responsável: {pessoa.responsavel || ''}</span>
                     </div>
                 </div>
                 <div className="flex gap-2 mt-2 sm:mt-0">

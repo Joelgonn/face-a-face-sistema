@@ -208,7 +208,7 @@ export default function Dashboard() {
         <div className="md:hidden">
           <button onClick={() => setShowStats(!showStats)} className="w-full bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex items-center justify-between active:scale-[0.99] transition-transform">
             <div>
-              <span className="text-orange-900 font-bold text-lg block">Visão Geral</span>
+              <span className="text-orange-600 font-bold text-lg block">Visão Geral</span>
               <span className="text-sm text-gray-500">{totalPresentes} de {totalEncontristas} presentes</span>
             </div>
             <div className={`transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`}><ChevronDown className="text-orange-400"/></div>
