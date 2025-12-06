@@ -5,7 +5,7 @@ import { createClient } from '@/app/utils/supabase/client';
 import { 
   ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, 
   Plus, X, Trash2, Clock, CheckCircle2, Pencil, Loader2, 
-  ChevronDown, ChevronUp, CalendarClock, Info 
+  ChevronDown, ChevronUp, CalendarClock, ThumbsUp, Info 
 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -69,6 +69,9 @@ export default function DetalhesEncontrista() {
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
+  // Modal de Alerta de Alergia
+  const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
+
   // Combobox States
   const [baseMedicamentos, setBaseMedicamentos] = useState<BaseMedicamento[]>([]);
   const [sugestoes, setSugestoes] = useState<BaseMedicamento[]>([]);
@@ -116,15 +119,12 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  const verificarAlergia = (nomeRemedio: string) => {
-    if (!pessoa?.alergias) return false; 
+  const verificarConflitoAlergia = (nomeRemedio: string) => {
+    if (!pessoa?.alergias) return null; 
     const alergias = pessoa.alergias.toLowerCase().split(/[,;]+/).map(s => s.trim());
     const remedio = nomeRemedio.toLowerCase();
     const conflito = alergias.find(alergia => alergia.length > 2 && remedio.includes(alergia));
-    if (conflito) {
-        return `⚠️ ALERTA DE ALERGIA!\nPaciente alérgico a "${conflito.toUpperCase()}".\nDeseja continuar?`;
-    }
-    return false; 
+    return conflito || null;
   };
 
   const calcularStatus = (med: Prescricao) => {
@@ -211,15 +211,28 @@ export default function DetalhesEncontrista() {
     setSaving(false);
   };
 
-  const handleSalvarMedicacao = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (medHorario.length !== 5 || !medHorario.includes(':')) { alert("Horário inválido"); return; }
-    const alerta = verificarAlergia(medNome);
-    if (alerta && !confirm(alerta)) return;
+  const executeSalvarMedicacao = async () => {
     setSaving(true);
     const { error } = await supabase.from('prescricoes').insert({ encontrista_id: params.id, nome_medicamento: medNome, dosagem: medDosagem, posologia: medPosologia, horario_inicial: medHorario });
-    if (!error) { setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario(''); setIsModalOpen(false); carregarDados(); }
+    if (!error) { setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario(''); setIsModalOpen(false); setAllergyWarning(null); carregarDados(); }
     setSaving(false);
+  };
+
+  const handleSalvarMedicacaoClick = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (medHorario.length !== 5 || !medHorario.includes(':')) { alert("Horário inválido"); return; }
+    
+    const conflito = verificarConflitoAlergia(medNome);
+    
+    if (conflito) {
+        setAllergyWarning({
+            show: true,
+            message: conflito.toUpperCase(),
+            onConfirm: () => executeSalvarMedicacao()
+        });
+    } else {
+        executeSalvarMedicacao();
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -228,14 +241,26 @@ export default function DetalhesEncontrista() {
     if (!error) carregarDados();
   };
 
-  const abrirConfirmacaoAdministracao = (prescricao: Prescricao) => {
-    const alerta = verificarAlergia(prescricao.nome_medicamento);
-    if (alerta && !confirm(alerta)) return;
+  const executeAbrirConfirmacao = (prescricao: Prescricao) => {
     setSelectedPrescricao(prescricao);
+    setAllergyWarning(null); 
     const jaFoiAdministrado = historico.some(h => h.prescricao_id === prescricao.id);
     if (!jaFoiAdministrado && prescricao.horario_inicial) { setHoraAdministracao(prescricao.horario_inicial); } 
     else { setHoraAdministracao(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); }
     setIsAdministerModalOpen(true);
+  };
+
+  const handleAdministrarClick = (prescricao: Prescricao) => {
+    const conflito = verificarConflitoAlergia(prescricao.nome_medicamento);
+    if (conflito) {
+        setAllergyWarning({
+            show: true,
+            message: conflito.toUpperCase(),
+            onConfirm: () => executeAbrirConfirmacao(prescricao)
+        });
+    } else {
+        executeAbrirConfirmacao(prescricao);
+    }
   };
 
   const confirmarAdministracao = async (e: React.FormEvent) => {
@@ -296,7 +321,7 @@ export default function DetalhesEncontrista() {
            </div>
         </div>
 
-        {/* --- ACORDEÃO DE INFORMAÇÕES (ALERGIAS E OBSERVAÇÕES) --- */}
+        {/* --- ACORDEÃO DE INFORMAÇÕES --- */}
         <div>
             <button 
                 onClick={() => setInfoExpanded(!infoExpanded)}
@@ -311,14 +336,13 @@ export default function DetalhesEncontrista() {
                     <span>Informações Adicionais</span>
                     {pessoa.alergias && (
                         <span className="text-[10px] bg-red-200 text-red-800 px-2 py-0.5 rounded-full animate-pulse">
-                            ⚠️ POSSUI ALERGIAS
+                            ⚠️ ALERGIAS
                         </span>
                     )}
                 </div>
                 {infoExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
 
-            {/* Conteúdo Expansível */}
             {infoExpanded && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
                     <div className={`p-5 rounded-3xl border ${pessoa.alergias ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
@@ -378,7 +402,7 @@ export default function DetalhesEncontrista() {
                                 
                                 <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 sm:border-none">
                                     <button 
-                                        onClick={() => abrirConfirmacaoAdministracao(med)} 
+                                        onClick={() => handleAdministrarClick(med)} 
                                         className="flex-1 sm:flex-none bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold"
                                     >
                                         <CheckCircle2 size={18} /> Administrar
@@ -432,6 +456,39 @@ export default function DetalhesEncontrista() {
 
       {/* --- MODAIS --- */}
       
+      {/* NOVO: MODAL ALERTA DE ALERGIA */}
+      {allergyWarning && (
+        <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 text-center border-4 border-red-100">
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                    <AlertTriangle className="text-red-600 w-10 h-10" />
+                </div>
+                <h2 className="text-2xl font-black text-red-600 mb-2">ATENÇÃO!</h2>
+                <p className="text-slate-600 font-medium mb-1">O paciente possui alergia a:</p>
+                <p className="text-xl font-bold text-slate-800 mb-8 border-b-2 border-red-100 pb-2 inline-block">
+                    {allergyWarning.message}
+                </p>
+                
+                <p className="text-sm text-slate-400 mb-6">Tem certeza que deseja prosseguir?</p>
+
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={allergyWarning.onConfirm} 
+                        className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                    >
+                        <ThumbsUp size={18} /> Sim, estou ciente
+                    </button>
+                    <button 
+                        onClick={() => setAllergyWarning(null)} 
+                        className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* MODAL CONFIRMAR DOSE */}
       {isAdministerModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -470,7 +527,7 @@ export default function DetalhesEncontrista() {
               <h2 className="text-xl font-bold text-slate-800">Nova Medicação</h2>
               <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
             </div>
-            <form onSubmit={handleSalvarMedicacao} className="space-y-5">
+            <form onSubmit={handleSalvarMedicacaoClick} className="space-y-5">
               <div className="relative" ref={wrapperRef}>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome do Medicamento</label>
                   <div className="relative">
