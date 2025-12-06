@@ -41,6 +41,156 @@ interface BaseMedicamento {
     nome: string;
 }
 
+// --- DICIONÁRIO DE RISCO CRUZADO (Segurança Clínica) ---
+const FAMILIAS_DE_RISCO: Record<string, string[]> = {
+  // Antibióticos Beta-lactâmicos
+  'penicilina': ['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 
+                'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina',
+                'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem',
+                'ertapenem', 'aztreonam'],
+  
+  // AINES
+  'aines': ['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 
+           'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib',
+           'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
+  
+  // Sulfonamidas
+  'sulfa': ['sulfametoxazol', 'trimetoprima', 'bactrim', 'sulfadiazina',
+           'sulfasalazina', 'sulfadoxina', 'sulfamerazina'],
+  
+  // Dipirona e derivados
+  'dipirona': ['novalgina', 'lisador', 'magnopyrol', 'dipimed', 'neosaldina',
+              'buscofen', 'termopirona'],
+  
+  // Paracetamol
+  'paracetamol': ['tylenol', 'parador', 'dôrico', 'acetaminofen', 'cimegripe',
+                 'tandrilax', 'vic'],
+  
+  // Corticoides
+  'corticoides': ['prednisona', 'dexametasona', 'hidrocortisona', 'betametasona',
+                 'metilprednisolona', 'triancinolona', 'cortisona', 'deflazacorte'],
+  
+  // IECA
+  'ieca': ['captopril', 'enalapril', 'lisinopril', 'ramipril', 'perindopril',
+          'quinapril', 'fosinopril', 'benazepril'],
+  
+  // ARA-II
+  'bra': ['losartan', 'valsartan', 'candesartan', 'irbesartan', 'olmesartan',
+         'telmisartan', 'eprosartan', 'azilsartan'],
+  
+  // Estatinas
+  'estatinas': ['sinvastatina', 'atorvastatina', 'rosuvastatina', 'pravastatina',
+               'lovastatina', 'fluvastatina', 'pitavastatina'],
+  
+  // Anticonvulsivantes
+  'anticonvulsivantes': ['fenitoína', 'carbamazepina', 'valproato', 'fenobarbital',
+                        'oxcarbazepina', 'lamotrigina', 'gabapentina', 'pregabalina',
+                        'topiramato', 'levetiracetam'],
+  
+  // Antidepressivos
+  'antidepressivos_ssri': ['fluoxetina', 'sertralina', 'paroxetina', 'citalopram',
+                          'escitalopram', 'fluvoxamina'],
+  
+  'antidepressivos_triciclicos': ['amitriptilina', 'imipramina', 'clomipramina',
+                                 'nortriptilina', 'desipramina'],
+  
+  // Antipsicóticos
+  'antipsicoticos': ['haloperidol', 'clorpromazina', 'risperidona', 'quetiapina',
+                    'olanzapina', 'aripiprazol', 'ziprasidona', 'clozapina'],
+  
+  // Anticoagulantes
+  'acoas': ['varfarina', 'acenocumarol'],
+  'doacs': ['dabigatrana', 'rivaroxabana', 'apixabana', 'edoxabana'],
+  
+  // Antiagregantes
+  'antiagregantes': ['aas', 'clopidogrel', 'ticagrelor', 'prasugrel', 'dipiridamol',
+                    'ticlopidina'],
+  
+  // Diuréticos
+  'diureticos_tiazidicos': ['hidroclorotiazida', 'clortalidona', 'indapamida'],
+  'diureticos_aliança': ['furosemida', 'bumetanida', 'torasemida'],
+  'diureticos_poupadores': ['espironolactona', 'amilorida', 'triamtereno'],
+  
+  // Betabloqueadores
+  'betabloqueadores': ['propranolol', 'atenolol', 'metoprolol', 'carvedilol',
+                      'bisoprolol', 'nebivolol', 'labetalol'],
+  
+  // Bloqueadores de cálcio
+  'bloqueadores_calcio': ['anlodipino', 'nifedipino', 'verapamil', 'diltiazem',
+                         'nicardipino', 'felodipino'],
+  
+  // Quimioterápicos
+  'quimioterapicos': ['cisplatina', 'carboplatina', 'oxaliplatina', 'ciclofosfamida',
+                     'doxorrubicina', 'vincristina', 'paclitaxel', 'docetaxel',
+                     'metotrexato', '5-fluorouracil', 'gemcitabina'],
+  
+  // Imunossupressores
+  'imunossupressores': ['ciclosporina', 'tacrolimo', 'sirolimo', 'micofenolato',
+                       'azatioprina', 'leflunomida', 'metotrexato'],
+  
+  // Contraste iodado
+  'contraste_iodado': ['iohexol', 'iopamidol', 'ioversol', 'iodixanol', 'ioxitol'],
+  
+  // Laxantes
+  'laxantes_estimulantes': ['bisacodil', 'picosulfato', 'sena', 'cáscara sagrada'],
+  'laxantes_osmoticos': ['lactulose', 'polietilenoglicol', 'hidróxido de magnésio'],
+  
+  // Opioides
+  'opioides': ['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona',
+              'fentanila', 'metadona', 'buprenorfina'],
+  
+  // Benzodiazepínicos
+  'benzodiazepinicos': ['diazepam', 'lorazepam', 'clonazepam', 'alprazolam',
+                       'bromazepam', 'midazolam', 'clordiazepóxido'],
+  
+  // Antifúngicos azólicos
+  'antifungicos_azois': ['fluconazol', 'itraconazol', 'cetoconazol', 'voriconazol',
+                        'posaconazol', 'isavuconazol'],
+  
+  // Antivirais
+  'antivirais_herpes': ['aciclovir', 'valaciclovir', 'famciclovir', 'ganciclovir'],
+  'antivirais_hiv': ['tenofovir', 'lamivudina', 'zidovudina', 'efavirenz', 'ritonavir',
+                    'darunavir', 'dolutegravir', 'raltegravir'],
+  
+  // Antieméticos
+  'antiemeticos': ['ondansetrona', 'metoclopramida', 'domperidona', 'bromoprida',
+                  'prometazina', 'dexametasona'],
+  
+  // Broncodilatadores
+  'broncodilatadores_beta2': ['salbutamol', 'fenoterol', 'formoterol', 'salmeterol',
+                             'indacaterol', 'vilanterol'],
+  'broncodilatadores_anticolinergicos': ['ipratrópio', 'tiotrópio', 'aclidínio',
+                                        'glicopirrônio', 'umelidínio']
+};
+
+// --- Mapeamento de sinônimos para padronização ---
+const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
+  'paracetamol': 'paracetamol',
+  'acetaminofen': 'paracetamol',
+  'acetaminofeno': 'paracetamol',
+  'tylenol': 'paracetamol',
+  'dipirona': 'dipirona',
+  'novalgina': 'dipirona',
+  'metamizol': 'dipirona',
+  'aas': 'aspirina',
+  'ácido acetilsalicílico': 'aspirina',
+  'amoxil': 'amoxicilina',
+  'clavulin': 'amoxicilina', // Simplificado para pegar a família
+  'azitromicina': 'azitromicina',
+  'zitromax': 'azitromicina',
+  'enalapril': 'enalapril',
+  'renitec': 'enalapril',
+  'losartan': 'losartan',
+  'cozaar': 'losartan',
+  'omeprazol': 'omeprazol',
+  'prazol': 'omeprazol',
+  'sinvastatina': 'sinvastatina',
+  'zocor': 'sinvastatina',
+  'ibuprofeno': 'ibuprofeno',
+  'advil': 'ibuprofeno',
+  'alivium': 'ibuprofeno'
+};
+
 // --- Funções Auxiliares ---
 const formatarHora = (isoString: string) => {
   const data = new Date(isoString);
@@ -55,6 +205,14 @@ const formatarNomeEnfermeiro = (email: string) => {
     const parteNome = email.split('@')[0]; 
     const nomeLimpo = parteNome.replace(/[0-9]/g, '').replace(/[._]/g, ' ');
     return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim();
+};
+
+const normalizarTexto = (texto: string) => {
+    return texto
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim();
 };
 
 export default function DetalhesEncontrista() {
@@ -79,7 +237,7 @@ export default function DetalhesEncontrista() {
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
-  // Modal Excluir Medicação (NOVO)
+  // Modal Excluir Medicação
   const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
 
   // Modal de Alerta de Alergia
@@ -132,12 +290,45 @@ export default function DetalhesEncontrista() {
     }
   };
 
+  // --- NOVA LÓGICA DE ALERGIA INTELIGENTE ---
   const verificarConflitoAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return null; 
-    const alergias = pessoa.alergias.toLowerCase().split(/[,;]+/).map(s => s.trim());
-    const remedio = nomeRemedio.toLowerCase();
-    const conflito = alergias.find(alergia => alergia.length > 2 && remedio.includes(alergia));
-    return conflito || null;
+
+    // 1. Normaliza e Verifica Sinônimos
+    let remedioNormalizado = normalizarTexto(nomeRemedio);
+    
+    // Se o remédio digitado tiver um nome genérico no mapa, usamos o genérico
+    if (SINONIMOS_MEDICAMENTOS[remedioNormalizado]) {
+        remedioNormalizado = SINONIMOS_MEDICAMENTOS[remedioNormalizado];
+    }
+
+    // Separa por vírgula, ponto-e-vírgula ou a palavra " e "
+    const listaAlergias = pessoa.alergias.split(/[,;]|\be\b/).map(s => normalizarTexto(s)).filter(s => s.length > 2);
+
+    for (const alergia of listaAlergias) {
+        // 2. Verifica correspondência direta (texto contido)
+        if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
+            return `Possível alergia a: ${alergia.toUpperCase()}`;
+        }
+
+        // 3. Verifica Famílias de Risco (Ex: Penicilina <-> Amoxicilina)
+        // Se a alergia digitada for uma chave do dicionário (Ex: "penicilina")
+        if (FAMILIAS_DE_RISCO[alergia]) {
+            const cruzados = FAMILIAS_DE_RISCO[alergia];
+            if (cruzados.some(c => remedioNormalizado.includes(c))) {
+                return `Risco Cruzado: ${alergia.toUpperCase()} (Família)`;
+            }
+        }
+        
+        // 4. Verifica Inverso (Se o remédio é chave e a alergia é membro)
+        for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
+            if (normalizarTexto(familia) === alergia && membros.some(m => remedioNormalizado.includes(m))) {
+                 return `Risco Cruzado: ${alergia.toUpperCase()} (Família)`;
+            }
+        }
+    }
+    
+    return null;
   };
 
   const calcularStatus = (med: Prescricao) => {
@@ -490,7 +681,7 @@ export default function DetalhesEncontrista() {
 
       {/* --- MODAIS --- */}
       
-      {/* MODAL ALERTA DE ALERGIA */}
+      {/* MODAL ALERTA DE ALERGIA (TURBINADO) */}
       {allergyWarning && (
         <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 text-center border-4 border-red-100">
@@ -498,23 +689,31 @@ export default function DetalhesEncontrista() {
                     <AlertTriangle className="text-red-600 w-10 h-10" />
                 </div>
                 <h2 className="text-2xl font-black text-red-600 mb-2">ATENÇÃO!</h2>
-                <p className="text-slate-600 font-medium mb-1">O paciente possui alergia a:</p>
-                <p className="text-xl font-bold text-slate-800 mb-8 border-b-2 border-red-100 pb-2 inline-block">
-                    {allergyWarning.message}
+                
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6">
+                    <p className="text-slate-600 font-medium mb-1 text-sm">O sistema detectou um conflito:</p>
+                    <p className="text-lg font-bold text-red-800 uppercase break-words">
+                        {allergyWarning.message}
+                    </p>
+                </div>
+
+                <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">
+                    * Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.
                 </p>
+
                 <div className="flex flex-col gap-3">
                     <button onClick={allergyWarning.onConfirm} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
-                        <ThumbsUp size={18} /> Sim, estou ciente
+                        <ThumbsUp size={18} /> Sim, estou ciente e assumo o risco
                     </button>
                     <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
-                        Cancelar
+                        Cancelar Administração
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* NOVO: MODAL DE EXCLUSÃO DE PRESCRIÇÃO */}
+      {/* MODAL DE EXCLUSÃO DE PRESCRIÇÃO */}
       {medicationToDelete !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-red-50">
