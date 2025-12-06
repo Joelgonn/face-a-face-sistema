@@ -333,7 +333,7 @@ export default function DetalhesEncontrista() {
                         setEditNome(pessoa.nome); setEditResponsavel(pessoa.responsavel || '');
                         setEditAlergias(pessoa.alergias || ''); setEditObservacoes(pessoa.observacoes || '');
                         setIsEditModalOpen(true);
-                    }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+                    }} className="px-4 py-2 bg-slate-100 hover:bg-orange-200 text-orange-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
                         <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
                     </button>
                     <div className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 border ${pessoa.check_in ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>

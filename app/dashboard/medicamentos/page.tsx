@@ -175,7 +175,7 @@ export default function GestaoMedicamentos() {
                     <button 
                         onClick={() => fileInputRef.current?.click()} 
                         disabled={importing}
-                        className="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors"
+                        className="bg-white text-orange-600 border border-red-200 hover:bg-orange-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors"
                         title="Importar"
                     >
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
@@ -298,7 +298,7 @@ export default function GestaoMedicamentos() {
                     <AlertTriangle className="text-red-500 w-8 h-8" />
                 </div>
                 <h2 className="text-xl font-bold text-slate-800 mb-2">Excluir Medicamento?</h2>
-                <p className="text-slate-500 text-sm mb-6">
+                <p className="text-red-500 text-sm mb-6">
                     Tem certeza que deseja remover este item da base de dados? Essa ação não pode ser desfeita.
                 </p>
                 <div className="flex gap-3">
