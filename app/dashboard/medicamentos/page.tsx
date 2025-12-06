@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
-import { ArrowLeft, Upload, Search, Trash2, Plus, Loader2, Save, ChevronDown, Stethoscope, Clock } from 'lucide-react';
+import { ArrowLeft, Upload, Search, Trash2, Plus, Loader2, Save, ChevronDown, Stethoscope, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 interface Medicamento {
@@ -24,7 +24,10 @@ export default function GestaoMedicamentos() {
   // Estado para controlar qual card está expandido
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [medToDelete, setMedToDelete] = useState<number | null>(null); // Novo estado para exclusão
+
   const [novoNome, setNovoNome] = useState('');
   const [novaDosagem, setNovaDosagem] = useState('');
 
@@ -61,7 +64,7 @@ export default function GestaoMedicamentos() {
     if (!isAdmin) return; 
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!confirm("Deseja importar a lista de medicamentos?")) return;
+    if (!confirm("Deseja importar a lista de medicamentos?")) return; // Mantive aqui pois é ação de admin massiva, mas pode ser modal também se preferir
 
     setImporting(true);
     const reader = new FileReader();
@@ -107,11 +110,19 @@ export default function GestaoMedicamentos() {
     reader.readAsText(file, 'UTF-8'); 
   };
 
-  const handleDelete = async (id: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita expandir o card ao clicar em excluir
-    if (!isAdmin) { alert("Apenas administradores podem excluir."); return; }
-    if (!confirm("Excluir este medicamento da base?")) return;
-    await supabase.from('medicamentos').delete().eq('id', id);
+  // 1. Solicitar Exclusão (Abre Modal)
+  const requestDelete = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita expandir o card
+    if (!isAdmin) { return; }
+    setMedToDelete(id);
+  };
+
+  // 2. Confirmar Exclusão (Executa no Banco)
+  const confirmDelete = async () => {
+    if (medToDelete === null) return;
+    
+    await supabase.from('medicamentos').delete().eq('id', medToDelete);
+    setMedToDelete(null); // Fecha modal
     buscarMedicamentos();
   };
 
@@ -169,7 +180,7 @@ export default function GestaoMedicamentos() {
                     >
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
                         {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} 
-                        <span className="hidden md:inline">Importar TXT</span>
+                        <span className="hidden lg:inline">Importar TXT</span>
                     </button>
                 )}
 
@@ -210,9 +221,8 @@ export default function GestaoMedicamentos() {
                                 <div className="flex flex-col items-end gap-2">
                                     {isAdmin && (
                                         <button 
-                                            onClick={(e) => handleDelete(med.id, e)} 
+                                            onClick={(e) => requestDelete(med.id, e)} 
                                             className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Excluir"
                                         >
                                             <Trash2 size={18} />
                                         </button>
@@ -279,6 +289,36 @@ export default function GestaoMedicamentos() {
             </div>
         </div>
       )}
+
+      {/* MODAL DE EXCLUSÃO (ESTILIZADO) */}
+      {medToDelete !== null && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">
+                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                    <AlertTriangle className="text-red-500 w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Excluir Medicamento?</h2>
+                <p className="text-slate-500 text-sm mb-6">
+                    Tem certeza que deseja remover este item da base de dados? Essa ação não pode ser desfeita.
+                </p>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setMedToDelete(null)} 
+                        className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={confirmDelete} 
+                        className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2"
+                    >
+                        Sim, Excluir
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
