@@ -135,7 +135,7 @@ const FAMILIAS_DE_RISCO: Record<string, string[]> = {
   'laxantes_estimulantes': ['bisacodil', 'picosulfato', 'sena', 'cáscara sagrada'],
   'laxantes_osmoticos': ['lactulose', 'polietilenoglicol', 'hidróxido de magnésio'],
   
-  // Opioides
+  // Opioides (AQUI ESTÁ A MORFINA E CODEÍNA JUNTAS)
   'opioides': ['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona',
               'fentanila', 'metadona', 'buprenorfina'],
   
@@ -175,7 +175,7 @@ const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
   'aas': 'aspirina',
   'ácido acetilsalicílico': 'aspirina',
   'amoxil': 'amoxicilina',
-  'clavulin': 'amoxicilina', // Simplificado para pegar a família
+  'clavulin': 'amoxicilina', 
   'azitromicina': 'azitromicina',
   'zitromax': 'azitromicina',
   'enalapril': 'enalapril',
@@ -188,7 +188,9 @@ const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
   'zocor': 'sinvastatina',
   'ibuprofeno': 'ibuprofeno',
   'advil': 'ibuprofeno',
-  'alivium': 'ibuprofeno'
+  'alivium': 'ibuprofeno',
+  'codein': 'codeína',
+  'dimorf': 'morfina'
 };
 
 // --- Funções Auxiliares ---
@@ -220,8 +222,6 @@ export default function DetalhesEncontrista() {
   const [medicacoes, setMedicacoes] = useState<Prescricao[]>([]);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Estado para Expandir/Ocultar Informações
   const [infoExpanded, setInfoExpanded] = useState(false);
 
   // Modal Nova Medicação
@@ -290,40 +290,45 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  // --- NOVA LÓGICA DE ALERGIA INTELIGENTE ---
+  // --- NOVA LÓGICA DE ALERGIA INTELIGENTE (ATUALIZADA) ---
   const verificarConflitoAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return null; 
 
     // 1. Normaliza e Verifica Sinônimos
     let remedioNormalizado = normalizarTexto(nomeRemedio);
-    
-    // Se o remédio digitado tiver um nome genérico no mapa, usamos o genérico
     if (SINONIMOS_MEDICAMENTOS[remedioNormalizado]) {
         remedioNormalizado = SINONIMOS_MEDICAMENTOS[remedioNormalizado];
     }
 
-    // Separa por vírgula, ponto-e-vírgula ou a palavra " e "
     const listaAlergias = pessoa.alergias.split(/[,;]|\be\b/).map(s => normalizarTexto(s)).filter(s => s.length > 2);
 
     for (const alergia of listaAlergias) {
-        // 2. Verifica correspondência direta (texto contido)
+        // A. Verifica correspondência direta
         if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
-            return `Possível alergia a: ${alergia.toUpperCase()}`;
+            return `Possível alergia direta a: ${alergia.toUpperCase()}`;
         }
 
-        // 3. Verifica Famílias de Risco (Ex: Penicilina <-> Amoxicilina)
-        // Se a alergia digitada for uma chave do dicionário (Ex: "penicilina")
-        if (FAMILIAS_DE_RISCO[alergia]) {
-            const cruzados = FAMILIAS_DE_RISCO[alergia];
-            if (cruzados.some(c => remedioNormalizado.includes(c))) {
-                return `Risco Cruzado: ${alergia.toUpperCase()} (Família)`;
-            }
-        }
-        
-        // 4. Verifica Inverso (Se o remédio é chave e a alergia é membro)
+        // B. Verifica Lógica de Famílias (Pais, Filhos e Irmãos)
         for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
-            if (normalizarTexto(familia) === alergia && membros.some(m => remedioNormalizado.includes(m))) {
-                 return `Risco Cruzado: ${alergia.toUpperCase()} (Família)`;
+            const nomeFamilia = normalizarTexto(familia);
+
+            // Cenário 1: Alergia é a Família (Ex: "Alergia a AINES" -> Remédio "Ibuprofeno")
+            if (alergia === nomeFamilia && membros.some(m => remedioNormalizado.includes(m))) {
+                return `Risco de Grupo: ${alergia.toUpperCase()} (Família)`;
+            }
+
+            // Cenário 2: Remédio é a Família (Ex: "Alergia a Amoxicilina" -> Remédio "Penicilina")
+            if (remedioNormalizado === nomeFamilia && membros.some(m => alergia.includes(m))) {
+                return `Risco de Grupo: ${alergia.toUpperCase()} pertence à família ${familia.toUpperCase()}`;
+            }
+
+            // Cenário 3: Irmãos (Ex: "Alergia a Morfina" -> Remédio "Codeína")
+            // Verifica se TANTO a alergia QUANTO o remédio estão na lista de membros dessa família
+            const alergiaEstaNaLista = membros.some(m => alergia.includes(m) || m.includes(alergia));
+            const remedioEstaNaLista = membros.some(m => remedioNormalizado.includes(m));
+
+            if (alergiaEstaNaLista && remedioEstaNaLista) {
+                return `Reação Cruzada: ${alergia.toUpperCase()} e o remédio são do grupo ${familia.toUpperCase()}`;
             }
         }
     }
