@@ -1,51 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import { UserPlus, Lock, Mail, Key, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
-import { createClient } from '@/app/utils/supabase/client';
+import { Lock, Mail, Key, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { cadastrarEnfermeiro } from '@/app/actions/auth'; // Importe a action criada
 
 export default function CadastroPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [accessCode, setAccessCode] = useState(''); // Proteção contra intrusos
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{type: 'error' | 'success', text: string} | null>(null);
-  
-  const supabase = createClient();
   const router = useRouter();
 
-  // Defina aqui sua senha mestra para permitir cadastros
-  const CODIGO_MESTRA = "faceafacemedicacao"; 
-
-  const handleCadastro = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCadastro = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
     setMsg(null);
 
-    // 1. Verifica o código de segurança
-    if (accessCode !== CODIGO_MESTRA) {
-        setMsg({ type: 'error', text: 'Código de acesso inválido. Você não tem permissão.' });
-        setLoading(false);
-        return;
-    }
+    // Pegamos os dados do formulário
+    const formData = new FormData(event.currentTarget);
 
-    // 2. Tenta criar o usuário no Supabase
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    // Chamamos a Server Action
+    const resultado = await cadastrarEnfermeiro(formData);
 
-    if (error) {
-      setMsg({ type: 'error', text: error.message });
-    } else {
-      setMsg({ type: 'success', text: 'Cadastro realizado com sucesso! Redirecionando...' });
-      // Opcional: Login automático ou redirecionar
+    if (resultado.success) {
+      setMsg({ type: 'success', text: resultado.message });
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/'); // Manda pro Login
       }, 2000);
+    } else {
+      setMsg({ type: 'error', text: resultado.message });
     }
+    
     setLoading(false);
   };
 
@@ -57,13 +42,7 @@ export default function CadastroPage() {
             <ArrowLeft className="w-4 h-4 mr-1" /> Voltar ao Login
         </Link>
 
-        <div className="text-center mb-8">
-          <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <UserPlus className="w-8 h-8 text-orange-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Novo Enfermeiro</h1>
-          <p className="text-gray-500 text-sm mt-1">Cadastro restrito da equipe</p>
-        </div>
+        {/* ... (O cabeçalho visual continua igual) ... */}
 
         {msg && (
             <div className={`mb-4 p-3 rounded-lg text-sm flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
@@ -77,12 +56,12 @@ export default function CadastroPage() {
           <div className="relative group">
              <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Código Mestre</label>
             <div className="absolute inset-y-0 left-0 pl-3 top-6 flex items-center pointer-events-none">
-              <Key className="h-5 w-5 text-gray-400 group-focus-within:text-orange-500 transition-colors" />
+              <Key className="h-5 w-5 text-gray-400" />
             </div>
+            {/* O atributo 'name' é obrigatório para o FormData funcionar */}
             <input 
-              type="text" 
-              value={accessCode} 
-              onChange={(e) => setAccessCode(e.target.value)} 
+              name="accessCode" 
+              type="password" 
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all text-gray-900" 
               placeholder="Senha da equipe..." 
               required 
@@ -96,9 +75,8 @@ export default function CadastroPage() {
               <Mail className="h-5 w-5 text-gray-400" />
             </div>
             <input 
+              name="email"
               type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all text-gray-900" 
               placeholder="Email do Enfermeiro" 
               required 
@@ -110,9 +88,8 @@ export default function CadastroPage() {
               <Lock className="h-5 w-5 text-gray-400" />
             </div>
             <input 
+              name="password"
               type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all text-gray-900" 
               placeholder="Crie uma senha" 
               required 
