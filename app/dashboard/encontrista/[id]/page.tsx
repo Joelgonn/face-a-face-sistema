@@ -521,8 +521,8 @@ export default function DetalhesEncontrista() {
                 <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Trash2 className="text-red-500 w-8 h-8" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-800 mb-2">Excluir Medicação?</h2>
-                <p className="text-slate-500 text-sm mb-6">
+                <h2 className="text-xl font-bold text-red-800 mb-2">Excluir Medicação?</h2>
+                <p className="text-red-500 text-sm mb-6">
                     Isso removerá a prescrição e todo o histórico de administração.
                 </p>
                 <div className="flex gap-3">
@@ -568,7 +568,7 @@ export default function DetalhesEncontrista() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-slate-800">Nova Medicação</h2>
+              <h2 className="text-xl font-bold text-orange-600">Nova Medicação</h2>
               <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
             </div>
             <form onSubmit={handleSalvarMedicacaoClick} className="space-y-5">
@@ -609,7 +609,7 @@ export default function DetalhesEncontrista() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-slate-800">Editar Dados</h2>
+              <h2 className="text-xl font-bold text-orange-600">Editar Dados</h2>
               <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={20}/></button>
             </div>
             <form onSubmit={handleUpdatePessoa} className="space-y-4">
@@ -620,7 +620,7 @@ export default function DetalhesEncontrista() {
               </div>
               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações</label><textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800" /></div>
               <div className="pt-2">
-                <button type="submit" disabled={saving} className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold shadow-lg disabled:opacity-70 transition-all flex justify-center items-center gap-2">
+                <button type="submit" disabled={saving} className="w-full py-3 bg-green-500 hover:bg-orange-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-70 transition-all flex justify-center items-center gap-2">
                     {saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Salvar Alterações'}
                 </button>
               </div>

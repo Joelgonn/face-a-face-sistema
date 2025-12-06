@@ -218,7 +218,7 @@ export default function Dashboard() {
         {/* CARDS ESTATÍSTICAS */}
         <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-all duration-300 ${showStats ? 'block' : 'hidden md:grid'}`}>
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-orange-100 flex items-center justify-between card-hover">
-                <div><p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Inscritos</p><p className="text-3xl font-bold text-gray-800">{totalEncontristas}</p></div>
+                <div><p className="text-xs uppercase tracking-wide text-blue-500 font-semibold">Inscritos</p><p className="text-3xl font-bold text-blue-600">{totalEncontristas}</p></div>
                 <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Users size={24} /></div>
             </div>
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-orange-100 flex items-center justify-between card-hover">
@@ -336,7 +336,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
              <div className="bg-orange-50 px-6 py-4 flex justify-between items-center border-b border-orange-100">
-               <h2 className="text-orange-900 font-bold text-lg">Novo Encontrista</h2>
+               <h2 className="text-orange-600 font-bold text-lg">Novo Encontrista</h2>
                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24}/></button>
              </div>
              <form onSubmit={handleSalvar} className="p-6 space-y-4">
@@ -364,8 +364,8 @@ export default function Dashboard() {
              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="text-red-500 w-8 h-8" />
              </div>
-             <h2 className="text-gray-800 font-bold text-xl mb-2">Zerar Sistema?</h2>
-             <p className="text-gray-500 text-sm mb-6">Essa ação é irreversível. Todos os encontristas e históricos serão apagados.</p>
+             <h2 className="text-red-800 font-bold text-xl mb-2">Zerar Sistema?</h2>
+             <p className="text-red-500 text-sm mb-6">Essa ação é irreversível. Todos os encontristas e históricos serão apagados.</p>
              
              <form onSubmit={handleZerarSistema} className="space-y-4">
                 <div className="relative">

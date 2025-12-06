@@ -213,7 +213,7 @@ export default function GestaoMedicamentos() {
                             {/* CABEÇALHO DO CARD */}
                             <div className="p-4 flex justify-between items-start gap-3">
                                 <div>
-                                    <h3 className="font-bold text-slate-800 text-lg leading-tight">{med.nome}</h3>
+                                    <h3 className="font-bold text-slate-600 text-lg leading-tight">{med.nome}</h3>
                                     <span className="inline-block mt-1 text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">
                                         {med.dosagem || 'S/D'}
                                     </span>
@@ -269,7 +269,7 @@ export default function GestaoMedicamentos() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200">
-                <h2 className="text-xl font-bold mb-6 text-slate-800">Novo Medicamento</h2>
+                <h2 className="text-xl font-bold mb-6 text-orange-600">Novo Medicamento</h2>
                 <form onSubmit={handleSalvarManual} className="space-y-4">
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label>
