@@ -6,7 +6,7 @@ import { zerarSistemaCompleto } from '@/app/actions/system';
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
-  ChevronDown, FileText, CheckCircle2
+  ChevronDown, FileText, CheckCircle2, FileSpreadsheet
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -30,17 +30,31 @@ interface Encontrista {
   prescricoes: Prescricao[];
 }
 
+// Interface para o Toast Notification
+interface ToastNotification {
+  type: 'success' | 'error' | 'warning';
+  title: string;
+  message: string;
+}
+
 export default function Dashboard() {
-  // --- Estados ---
+  // --- Estados Principais ---
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [showStats, setShowStats] = useState(false);
   
-  // Modais e Formulários
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Estado para Notificação Flutuante (Toast)
+  const [toast, setToast] = useState<ToastNotification | null>(null);
+  
+  // Estados de Importação (Substitui o confirm nativo)
+  const [importing, setImporting] = useState(false);
+  const [fileToImport, setFileToImport] = useState<File | null>(null);
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+
+  // Modais Gerais
+  const [isModalOpen, setIsModalOpen] = useState(false); // Novo Encontrista
   const [saving, setSaving] = useState(false);
   
   // Form Novo Encontrista
@@ -55,12 +69,18 @@ export default function Dashboard() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  // Modal Check-in (NOVO)
+  // Modal Check-in
   const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // --- Helper de Notificação ---
+  const showToast = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
+    setToast({ type, title, message });
+    setTimeout(() => setToast(null), 4000); // Some após 4 segundos
+  };
 
   // --- LÓGICA E CÁLCULOS ---
   const totalEncontristas = encontristas.length;
@@ -125,28 +145,25 @@ export default function Dashboard() {
     return { cor: 'bg-green-100 text-green-700 border-green-200', texto: 'Em dia', prioridade: 1 };
   };
 
-  // 1. Apenas abre o modal
   const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => {
     setCheckInTarget({ id, status: currentStatus, nome });
   };
 
-  // 2. Executa a ação quando confirmado no modal
   const confirmCheckIn = async () => {
     if (!checkInTarget) return;
-    
     const { id, status } = checkInTarget;
-    
-    // Atualização Otimista (Muda na tela antes de ir pro banco)
+    // Atualização Otimista
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !status } : p));
-    setCheckInTarget(null); // Fecha modal imediatamente
-
-    // Atualiza no banco
+    setCheckInTarget(null);
     await supabase.from('encontristas').update({ check_in: !status }).eq('id', id);
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoNome.trim()) return alert("Nome obrigatório!");
+    if (!novoNome.trim()) {
+        showToast('warning', 'Atenção', 'O nome do encontrista é obrigatório.');
+        return;
+    }
     setSaving(true);
     
     const { error } = await supabase.from('encontristas').insert({ 
@@ -160,9 +177,10 @@ export default function Dashboard() {
     if (!error) {
       setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes(''); 
       setIsModalOpen(false); 
+      showToast('success', 'Cadastrado!', `${novoNome} foi adicionado à lista.`);
       buscarEncontristas();
     } else {
-      alert(error.message);
+      showToast('error', 'Erro', error.message);
     }
     setSaving(false);
   };
@@ -178,7 +196,7 @@ export default function Dashboard() {
       setEncontristas([]);
       setIsResetModalOpen(false);
       setResetPassword('');
-      alert(resultado.message); 
+      showToast('success', 'Sistema Zerado', 'Todos os dados foram limpos com sucesso.');
     } else {
       setResetError(resultado.message);
     }
@@ -186,11 +204,24 @@ export default function Dashboard() {
     setIsResetting(false);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // 1. O usuário seleciona o arquivo (NÃO processa ainda)
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !confirm("Importar lista?")) return;
+    if (file) {
+        setFileToImport(file);
+        setIsImportConfirmOpen(true); // Abre o modal customizado
+    }
+    // Reseta o input para permitir selecionar o mesmo arquivo novamente se cancelar
+    event.target.value = '';
+  };
+
+  // 2. O usuário confirma no Modal -> Processa o arquivo
+  const processFileImport = () => {
+    if (!fileToImport) return;
+
     setImporting(true);
     const reader = new FileReader();
+    
     reader.onload = async (e) => {
         const lines = (e.target?.result as string).split('\n');
         let count = 0;
@@ -207,12 +238,15 @@ export default function Dashboard() {
                 if (!error) count++;
             }
         }
-        alert(`${count} importados!`);
+        
+        showToast('success', 'Importação Concluída', `${count} registros importados com sucesso.`);
+        
         setImporting(false);
+        setIsImportConfirmOpen(false);
+        setFileToImport(null);
         buscarEncontristas();
-        if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsText(fileToImport, 'UTF-8');
   };
 
   const filtered = encontristas.filter(p => {
@@ -291,11 +325,14 @@ export default function Dashboard() {
           <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
             {isAdmin && (
                 <>
-                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.csv" />
-                    <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="bg-white text-gray-600 border border-orange-200 hover:bg-orange-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
-                        {importing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18} />} 
+                    {/* Input invisível para seleção de arquivo */}
+                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
+                    
+                    <button onClick={() => fileInputRef.current?.click()} className="bg-white text-gray-600 border border-orange-200 hover:bg-orange-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
+                        <Upload size={18} /> 
                         <span className="hidden lg:inline">Importar</span>
                     </button>
+                    
                     <button onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
                         <Trash2 size={18} /> 
                         <span className="hidden lg:inline">Zerar</span>
@@ -324,7 +361,6 @@ export default function Dashboard() {
                       <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-bold text-gray-800 hover:text-orange-600">{pessoa.nome}</Link>
                       {pessoa.responsavel && <p className="text-sm text-gray-500">Resp: {pessoa.responsavel}</p>}
                    </div>
-                   {/* Botão abre o novo modal */}
                    <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`p-2 rounded-full transition-colors ${pessoa.check_in ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                       {pessoa.check_in ? <UserCheck size={20}/> : <UserX size={20}/>}
                    </button>
@@ -360,9 +396,8 @@ export default function Dashboard() {
                     <tr key={pessoa.id} className="hover:bg-orange-50/50 transition-colors group">
                       <td className="p-4"><span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${status.cor}`}><Clock size={12}/> {status.texto}</span></td>
                       <td className="p-4 text-sm text-gray-400 font-mono">#{pessoa.id}</td>
-                      <td className="p-4 font-medium text-gray-800"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:underline decoration-orange-300 underline-offset-2">{pessoa.nome}</Link></td>
+                      <td className="p-4 font-medium text-gray-800"><Link href={`/dashboard/encontrista/${pessoa.id}`} className="hover:text-orange-600 hover:text-orange-600 hover:underline decoration-orange-300 underline-offset-2">{pessoa.nome}</Link></td>
                       <td className="p-4 text-center">
-                        {/* Botão abre o novo modal */}
                         <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm active:scale-95 transition-all ${pessoa.check_in ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'}`}>
                             {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
                         </button>
@@ -379,37 +414,89 @@ export default function Dashboard() {
 
       </main>
 
-      {/* --- MODAIS --- */}
+      {/* --- COMPONENTES VISUAIS (Toasts e Modais) --- */}
 
-      {/* MODAL DE CHECK-IN / CHECK-OUT (NOVO) */}
+      {/* 1. NOTIFICAÇÃO TOAST FLUTUANTE (Substitui os alerts de sucesso) */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-right-10 fade-in duration-300">
+          <div className={`flex items-center gap-4 p-4 rounded-2xl shadow-2xl border backdrop-blur-md min-w-[300px] ${
+             toast.type === 'success' ? 'bg-white/95 border-green-100 text-green-800' : 
+             toast.type === 'error' ? 'bg-white/95 border-red-100 text-red-800' :
+             'bg-white/95 border-amber-100 text-amber-800'
+          }`}>
+            <div className={`p-2 rounded-full ${
+              toast.type === 'success' ? 'bg-green-100 text-green-600' : 
+              toast.type === 'error' ? 'bg-red-100 text-red-600' :
+              'bg-amber-100 text-amber-600'
+            }`}>
+              {toast.type === 'success' ? <CheckCircle2 size={24} /> : toast.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
+            </div>
+            
+            <div className="flex-1">
+              <h4 className="font-bold text-sm">{toast.title}</h4>
+              <p className="text-xs font-medium opacity-80 leading-tight">{toast.message}</p>
+            </div>
+
+            <button onClick={() => setToast(null)} className="ml-2 p-1 hover:bg-black/5 rounded-full transition-colors text-current opacity-50 hover:opacity-100">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. MODAL CONFIRMAR IMPORTAÇÃO (Substitui o confirm nativo) */}
+      {isImportConfirmOpen && fileToImport && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center border-4 border-orange-50">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                    <FileSpreadsheet className="w-8 h-8 text-orange-600" />
+                </div>
+
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Confirmar Importação</h2>
+                
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-6 text-sm">
+                    <p className="text-gray-500 mb-1">Arquivo selecionado:</p>
+                    <p className="font-bold text-orange-700 break-all">{fileToImport.name}</p>
+                </div>
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => { setIsImportConfirmOpen(false); setFileToImport(null); }} 
+                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={processFileImport} 
+                        disabled={importing}
+                        className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 shadow-lg shadow-orange-200 transition-all flex items-center justify-center gap-2"
+                    >
+                        {importing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Processar'}
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
+
+      {/* 3. MODAL DE CHECK-IN / CHECK-OUT */}
       {checkInTarget && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center">
-                
-                {/* Ícone Dinâmico */}
                 <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${checkInTarget.status ? 'bg-red-50' : 'bg-green-50'}`}>
                     {checkInTarget.status 
                         ? <UserX className="w-8 h-8 text-red-500" /> 
                         : <CheckCircle2 className="w-8 h-8 text-green-500" />
                     }
                 </div>
-
                 <h2 className="text-xl font-bold text-gray-800 mb-2">
                     {checkInTarget.status ? 'Remover Presença?' : 'Confirmar Presença?'}
                 </h2>
-                
                 <p className="text-gray-500 text-sm mb-6">
                     {checkInTarget.status ? 'Deseja marcar como ausente:' : 'Deseja marcar como presente:'} <br/>
                     <span className="font-bold text-gray-800 text-base">{checkInTarget.nome}</span>
                 </p>
-
                 <div className="flex gap-3">
-                    <button 
-                        onClick={() => setCheckInTarget(null)} 
-                        className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
-                    >
-                        Cancelar
-                    </button>
+                    <button onClick={() => setCheckInTarget(null)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors">Cancelar</button>
                     <button 
                         onClick={confirmCheckIn} 
                         className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
@@ -425,7 +512,7 @@ export default function Dashboard() {
          </div>
       )}
 
-      {/* MODAL NOVO ENCONTRISTA */}
+      {/* 4. MODAL NOVO ENCONTRISTA */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -451,7 +538,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL ZERAR SISTEMA */}
+      {/* 5. MODAL ZERAR SISTEMA */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">

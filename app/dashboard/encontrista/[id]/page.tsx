@@ -43,154 +43,54 @@ interface BaseMedicamento {
 
 // --- DICIONÁRIO DE RISCO CRUZADO (Segurança Clínica) ---
 const FAMILIAS_DE_RISCO: Record<string, string[]> = {
-  // Antibióticos Beta-lactâmicos
-  'penicilina': ['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 
-                'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina',
-                'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem',
-                'ertapenem', 'aztreonam'],
-  
-  // AINES
-  'aines': ['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 
-           'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib',
-           'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
-  
-  // Sulfonamidas
-  'sulfa': ['sulfametoxazol', 'trimetoprima', 'bactrim', 'sulfadiazina',
-           'sulfasalazina', 'sulfadoxina', 'sulfamerazina'],
-  
-  // Dipirona e derivados
-  'dipirona': ['novalgina', 'lisador', 'magnopyrol', 'dipimed', 'neosaldina',
-              'buscofen', 'termopirona'],
-  
-  // Paracetamol
-  'paracetamol': ['tylenol', 'parador', 'dôrico', 'acetaminofen', 'cimegripe',
-                 'tandrilax', 'vic'],
-  
-  // Corticoides
-  'corticoides': ['prednisona', 'dexametasona', 'hidrocortisona', 'betametasona',
-                 'metilprednisolona', 'triancinolona', 'cortisona', 'deflazacorte'],
-  
-  // IECA
-  'ieca': ['captopril', 'enalapril', 'lisinopril', 'ramipril', 'perindopril',
-          'quinapril', 'fosinopril', 'benazepril'],
-  
-  // ARA-II
-  'bra': ['losartan', 'valsartan', 'candesartan', 'irbesartan', 'olmesartan',
-         'telmisartan', 'eprosartan', 'azilsartan'],
-  
-  // Estatinas
-  'estatinas': ['sinvastatina', 'atorvastatina', 'rosuvastatina', 'pravastatina',
-               'lovastatina', 'fluvastatina', 'pitavastatina'],
-  
-  // Anticonvulsivantes
-  'anticonvulsivantes': ['fenitoína', 'carbamazepina', 'valproato', 'fenobarbital',
-                        'oxcarbazepina', 'lamotrigina', 'gabapentina', 'pregabalina',
-                        'topiramato', 'levetiracetam'],
-  
-  // Antidepressivos
-  'antidepressivos_ssri': ['fluoxetina', 'sertralina', 'paroxetina', 'citalopram',
-                          'escitalopram', 'fluvoxamina'],
-  
-  'antidepressivos_triciclicos': ['amitriptilina', 'imipramina', 'clomipramina',
-                                 'nortriptilina', 'desipramina'],
-  
-  // Antipsicóticos
-  'antipsicoticos': ['haloperidol', 'clorpromazina', 'risperidona', 'quetiapina',
-                    'olanzapina', 'aripiprazol', 'ziprasidona', 'clozapina'],
-  
-  // Anticoagulantes
+  'penicilina': ['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina', 'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem', 'ertapenem', 'aztreonam'],
+  'aines': ['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib', 'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
+  'sulfa': ['sulfametoxazol', 'trimetoprima', 'bactrim', 'sulfadiazina', 'sulfasalazina', 'sulfadoxina', 'sulfamerazina'],
+  'dipirona': ['novalgina', 'lisador', 'magnopyrol', 'dipimed', 'neosaldina', 'buscofen', 'termopirona'],
+  'paracetamol': ['tylenol', 'parador', 'dôrico', 'acetaminofen', 'cimegripe', 'tandrilax', 'vic'],
+  'corticoides': ['prednisona', 'dexametasona', 'hidrocortisona', 'betametasona', 'metilprednisolona', 'triancinolona', 'cortisona', 'deflazacorte'],
+  'ieca': ['captopril', 'enalapril', 'lisinopril', 'ramipril', 'perindopril', 'quinapril', 'fosinopril', 'benazepril'],
+  'bra': ['losartan', 'valsartan', 'candesartan', 'irbesartan', 'olmesartan', 'telmisartan', 'eprosartan', 'azilsartan'],
+  'estatinas': ['sinvastatina', 'atorvastatina', 'rosuvastatina', 'pravastatina', 'lovastatina', 'fluvastatina', 'pitavastatina'],
+  'anticonvulsivantes': ['fenitoína', 'carbamazepina', 'valproato', 'fenobarbital', 'oxcarbazepina', 'lamotrigina', 'gabapentina', 'pregabalina', 'topiramato', 'levetiracetam'],
+  'antidepressivos_ssri': ['fluoxetina', 'sertralina', 'paroxetina', 'citalopram', 'escitalopram', 'fluvoxamina'],
+  'antidepressivos_triciclicos': ['amitriptilina', 'imipramina', 'clomipramina', 'nortriptilina', 'desipramina'],
+  'antipsicoticos': ['haloperidol', 'clorpromazina', 'risperidona', 'quetiapina', 'olanzapina', 'aripiprazol', 'ziprasidona', 'clozapina'],
   'acoas': ['varfarina', 'acenocumarol'],
   'doacs': ['dabigatrana', 'rivaroxabana', 'apixabana', 'edoxabana'],
-  
-  // Antiagregantes
-  'antiagregantes': ['aas', 'clopidogrel', 'ticagrelor', 'prasugrel', 'dipiridamol',
-                    'ticlopidina'],
-  
-  // Diuréticos
+  'antiagregantes': ['aas', 'clopidogrel', 'ticagrelor', 'prasugrel', 'dipiridamol', 'ticlopidina'],
   'diureticos_tiazidicos': ['hidroclorotiazida', 'clortalidona', 'indapamida'],
   'diureticos_aliança': ['furosemida', 'bumetanida', 'torasemida'],
   'diureticos_poupadores': ['espironolactona', 'amilorida', 'triamtereno'],
-  
-  // Betabloqueadores
-  'betabloqueadores': ['propranolol', 'atenolol', 'metoprolol', 'carvedilol',
-                      'bisoprolol', 'nebivolol', 'labetalol'],
-  
-  // Bloqueadores de cálcio
-  'bloqueadores_calcio': ['anlodipino', 'nifedipino', 'verapamil', 'diltiazem',
-                         'nicardipino', 'felodipino'],
-  
-  // Quimioterápicos
-  'quimioterapicos': ['cisplatina', 'carboplatina', 'oxaliplatina', 'ciclofosfamida',
-                     'doxorrubicina', 'vincristina', 'paclitaxel', 'docetaxel',
-                     'metotrexato', '5-fluorouracil', 'gemcitabina'],
-  
-  // Imunossupressores
-  'imunossupressores': ['ciclosporina', 'tacrolimo', 'sirolimo', 'micofenolato',
-                       'azatioprina', 'leflunomida', 'metotrexato'],
-  
-  // Contraste iodado
+  'betabloqueadores': ['propranolol', 'atenolol', 'metoprolol', 'carvedilol', 'bisoprolol', 'nebivolol', 'labetalol'],
+  'bloqueadores_calcio': ['anlodipino', 'nifedipino', 'verapamil', 'diltiazem', 'nicardipino', 'felodipino'],
+  'quimioterapicos': ['cisplatina', 'carboplatina', 'oxaliplatina', 'ciclofosfamida', 'doxorrubicina', 'vincristina', 'paclitaxel', 'docetaxel', 'metotrexato', '5-fluorouracil', 'gemcitabina'],
+  'imunossupressores': ['ciclosporina', 'tacrolimo', 'sirolimo', 'micofenolato', 'azatioprina', 'leflunomida', 'metotrexato'],
   'contraste_iodado': ['iohexol', 'iopamidol', 'ioversol', 'iodixanol', 'ioxitol'],
-  
-  // Laxantes
   'laxantes_estimulantes': ['bisacodil', 'picosulfato', 'sena', 'cáscara sagrada'],
   'laxantes_osmoticos': ['lactulose', 'polietilenoglicol', 'hidróxido de magnésio'],
-  
-  // Opioides (AQUI ESTÁ A MORFINA E CODEÍNA JUNTAS)
-  'opioides': ['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona',
-              'fentanila', 'metadona', 'buprenorfina'],
-  
-  // Benzodiazepínicos
-  'benzodiazepinicos': ['diazepam', 'lorazepam', 'clonazepam', 'alprazolam',
-                       'bromazepam', 'midazolam', 'clordiazepóxido'],
-  
-  // Antifúngicos azólicos
-  'antifungicos_azois': ['fluconazol', 'itraconazol', 'cetoconazol', 'voriconazol',
-                        'posaconazol', 'isavuconazol'],
-  
-  // Antivirais
+  'opioides': ['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona', 'fentanila', 'metadona', 'buprenorfina'],
+  'benzodiazepinicos': ['diazepam', 'lorazepam', 'clonazepam', 'alprazolam', 'bromazepam', 'midazolam', 'clordiazepóxido'],
+  'antifungicos_azois': ['fluconazol', 'itraconazol', 'cetoconazol', 'voriconazol', 'posaconazol', 'isavuconazol'],
   'antivirais_herpes': ['aciclovir', 'valaciclovir', 'famciclovir', 'ganciclovir'],
-  'antivirais_hiv': ['tenofovir', 'lamivudina', 'zidovudina', 'efavirenz', 'ritonavir',
-                    'darunavir', 'dolutegravir', 'raltegravir'],
-  
-  // Antieméticos
-  'antiemeticos': ['ondansetrona', 'metoclopramida', 'domperidona', 'bromoprida',
-                  'prometazina', 'dexametasona'],
-  
-  // Broncodilatadores
-  'broncodilatadores_beta2': ['salbutamol', 'fenoterol', 'formoterol', 'salmeterol',
-                             'indacaterol', 'vilanterol'],
-  'broncodilatadores_anticolinergicos': ['ipratrópio', 'tiotrópio', 'aclidínio',
-                                        'glicopirrônio', 'umelidínio']
+  'antivirais_hiv': ['tenofovir', 'lamivudina', 'zidovudina', 'efavirenz', 'ritonavir', 'darunavir', 'dolutegravir', 'raltegravir'],
+  'antiemeticos': ['ondansetrona', 'metoclopramida', 'domperidona', 'bromoprida', 'prometazina', 'dexametasona'],
+  'broncodilatadores_beta2': ['salbutamol', 'fenoterol', 'formoterol', 'salmeterol', 'indacaterol', 'vilanterol'],
+  'broncodilatadores_anticolinergicos': ['ipratrópio', 'tiotrópio', 'aclidínio', 'glicopirrônio', 'umelidínio']
 };
 
-// --- Mapeamento de sinônimos para padronização ---
 const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
-  'paracetamol': 'paracetamol',
-  'acetaminofen': 'paracetamol',
-  'acetaminofeno': 'paracetamol',
-  'tylenol': 'paracetamol',
-  'dipirona': 'dipirona',
-  'novalgina': 'dipirona',
-  'metamizol': 'dipirona',
-  'aas': 'aspirina',
-  'ácido acetilsalicílico': 'aspirina',
-  'amoxil': 'amoxicilina',
-  'clavulin': 'amoxicilina', 
-  'azitromicina': 'azitromicina',
-  'zitromax': 'azitromicina',
-  'enalapril': 'enalapril',
-  'renitec': 'enalapril',
-  'losartan': 'losartan',
-  'cozaar': 'losartan',
-  'omeprazol': 'omeprazol',
-  'prazol': 'omeprazol',
-  'sinvastatina': 'sinvastatina',
-  'zocor': 'sinvastatina',
-  'ibuprofeno': 'ibuprofeno',
-  'advil': 'ibuprofeno',
-  'alivium': 'ibuprofeno',
-  'codein': 'codeína',
-  'dimorf': 'morfina'
+  'paracetamol': 'paracetamol', 'acetaminofen': 'paracetamol', 'acetaminofeno': 'paracetamol', 'tylenol': 'paracetamol',
+  'dipirona': 'dipirona', 'novalgina': 'dipirona', 'metamizol': 'dipirona',
+  'aas': 'aspirina', 'ácido acetilsalicílico': 'aspirina',
+  'amoxil': 'amoxicilina', 'clavulin': 'amoxicilina', 
+  'azitromicina': 'azitromicina', 'zitromax': 'azitromicina',
+  'enalapril': 'enalapril', 'renitec': 'enalapril',
+  'losartan': 'losartan', 'cozaar': 'losartan',
+  'omeprazol': 'omeprazol', 'prazol': 'omeprazol',
+  'sinvastatina': 'sinvastatina', 'zocor': 'sinvastatina',
+  'ibuprofeno': 'ibuprofeno', 'advil': 'ibuprofeno', 'alivium': 'ibuprofeno',
+  'codein': 'codeína', 'dimorf': 'morfina'
 };
 
 // --- Funções Auxiliares ---
@@ -210,11 +110,7 @@ const formatarNomeEnfermeiro = (email: string) => {
 };
 
 const normalizarTexto = (texto: string) => {
-    return texto
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim();
+    return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 };
 
 export default function DetalhesEncontrista() {
@@ -224,7 +120,7 @@ export default function DetalhesEncontrista() {
   const [loading, setLoading] = useState(true);
   const [infoExpanded, setInfoExpanded] = useState(false);
 
-  // Modal Nova Medicação
+  // Modais e Estados
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [medNome, setMedNome] = useState('');
@@ -232,24 +128,19 @@ export default function DetalhesEncontrista() {
   const [medPosologia, setMedPosologia] = useState('');
   const [medHorario, setMedHorario] = useState('');
 
-  // Modal Administrar
   const [isAdministerModalOpen, setIsAdministerModalOpen] = useState(false);
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
-  // Modal Excluir Medicação
   const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
 
-  // Modal de Alerta de Alergia
   const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
 
-  // Combobox States
   const [baseMedicamentos, setBaseMedicamentos] = useState<BaseMedicamento[]>([]);
   const [sugestoes, setSugestoes] = useState<BaseMedicamento[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Modal Edição Pessoa
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editNome, setEditNome] = useState('');
   const [editResponsavel, setEditResponsavel] = useState('');
@@ -258,8 +149,6 @@ export default function DetalhesEncontrista() {
 
   const params = useParams();
   const supabase = createClient();
-
-  // --- LÓGICA ---
 
   const handleHorarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/\D/g, ''); 
@@ -290,11 +179,9 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  // --- NOVA LÓGICA DE ALERGIA INTELIGENTE (ATUALIZADA) ---
   const verificarConflitoAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return null; 
 
-    // 1. Normaliza e Verifica Sinônimos
     let remedioNormalizado = normalizarTexto(nomeRemedio);
     if (SINONIMOS_MEDICAMENTOS[remedioNormalizado]) {
         remedioNormalizado = SINONIMOS_MEDICAMENTOS[remedioNormalizado];
@@ -303,27 +190,18 @@ export default function DetalhesEncontrista() {
     const listaAlergias = pessoa.alergias.split(/[,;]|\be\b/).map(s => normalizarTexto(s)).filter(s => s.length > 2);
 
     for (const alergia of listaAlergias) {
-        // A. Verifica correspondência direta
         if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
             return `Possível alergia direta a: ${alergia.toUpperCase()}`;
         }
 
-        // B. Verifica Lógica de Famílias (Pais, Filhos e Irmãos)
         for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
             const nomeFamilia = normalizarTexto(familia);
-
-            // Cenário 1: Alergia é a Família (Ex: "Alergia a AINES" -> Remédio "Ibuprofeno")
             if (alergia === nomeFamilia && membros.some(m => remedioNormalizado.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} (Família)`;
             }
-
-            // Cenário 2: Remédio é a Família (Ex: "Alergia a Amoxicilina" -> Remédio "Penicilina")
             if (remedioNormalizado === nomeFamilia && membros.some(m => alergia.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} pertence à família ${familia.toUpperCase()}`;
             }
-
-            // Cenário 3: Irmãos (Ex: "Alergia a Morfina" -> Remédio "Codeína")
-            // Verifica se TANTO a alergia QUANTO o remédio estão na lista de membros dessa família
             const alergiaEstaNaLista = membros.some(m => alergia.includes(m) || m.includes(alergia));
             const remedioEstaNaLista = membros.some(m => remedioNormalizado.includes(m));
 
@@ -332,7 +210,6 @@ export default function DetalhesEncontrista() {
             }
         }
     }
-    
     return null;
   };
 
@@ -444,20 +321,40 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  // Abre modal de exclusão
   const openDeleteModal = (id: number) => {
     setMedicationToDelete(id);
   };
 
-  // Confirma e deleta
+  // --- FUNÇÃO CORRIGIDA ---
+  // Confirma e deleta (em cascata manual para evitar erro de FK)
   const confirmDeleteMedication = async () => {
     if (!medicationToDelete) return;
-    const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
+
+    // 1. Limpa o histórico (Filhos)
+    const { error: errorHistory } = await supabase
+        .from('historico_administracao')
+        .delete()
+        .eq('prescricao_id', medicationToDelete);
+
+    if (errorHistory) {
+        alert("Erro ao limpar histórico: " + errorHistory.message);
+        return;
+    }
+
+    // 2. Limpa a prescrição (Pai)
+    const { error } = await supabase
+        .from('prescricoes')
+        .delete()
+        .eq('id', medicationToDelete);
+
     if (!error) {
         setMedicationToDelete(null);
         carregarDados();
+    } else {
+        alert("Erro ao excluir medicamento: " + error.message);
     }
   };
+  // -------------------------
 
   const executeAbrirConfirmacao = (prescricao: Prescricao) => {
     setSelectedPrescricao(prescricao);
