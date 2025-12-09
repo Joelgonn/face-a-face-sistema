@@ -132,7 +132,11 @@ export default function DetalhesEncontrista() {
   const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
+  // Controle de Exclusão de Medicação (Remédio inteiro)
   const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
+
+  // NOVO: Controle de Exclusão de Histórico (Registro único)
+  const [historyToDelete, setHistoryToDelete] = useState<number | null>(null);
 
   const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
 
@@ -149,6 +153,8 @@ export default function DetalhesEncontrista() {
 
   const params = useParams();
   const supabase = createClient();
+
+  // --- Handlers ---
 
   const handleHorarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/\D/g, ''); 
@@ -325,36 +331,28 @@ export default function DetalhesEncontrista() {
     setMedicationToDelete(id);
   };
 
-  // --- FUNÇÃO CORRIGIDA ---
-  // Confirma e deleta (em cascata manual para evitar erro de FK)
+  // Exclui medicação e TUDO que tem nela
   const confirmDeleteMedication = async () => {
     if (!medicationToDelete) return;
 
-    // 1. Limpa o histórico (Filhos)
-    const { error: errorHistory } = await supabase
-        .from('historico_administracao')
-        .delete()
-        .eq('prescricao_id', medicationToDelete);
+    // 1. Limpa o histórico
+    const { error: errorHistory } = await supabase.from('historico_administracao').delete().eq('prescricao_id', medicationToDelete);
+    if (errorHistory) { alert("Erro ao limpar histórico: " + errorHistory.message); return; }
 
-    if (errorHistory) {
-        alert("Erro ao limpar histórico: " + errorHistory.message);
-        return;
-    }
+    // 2. Limpa a prescrição
+    const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
 
-    // 2. Limpa a prescrição (Pai)
-    const { error } = await supabase
-        .from('prescricoes')
-        .delete()
-        .eq('id', medicationToDelete);
-
-    if (!error) {
-        setMedicationToDelete(null);
-        carregarDados();
-    } else {
-        alert("Erro ao excluir medicamento: " + error.message);
-    }
+    if (!error) { setMedicationToDelete(null); carregarDados(); } 
+    else { alert("Erro ao excluir medicamento: " + error.message); }
   };
-  // -------------------------
+
+  // NOVO: Excluir item do histórico (Individual)
+  const confirmDeleteHistory = async () => {
+    if (!historyToDelete) return;
+    const { error } = await supabase.from('historico_administracao').delete().eq('id', historyToDelete);
+    if (!error) { setHistoryToDelete(null); carregarDados(); }
+    else { alert("Erro ao excluir registro: " + error.message); }
+  };
 
   const executeAbrirConfirmacao = (prescricao: Prescricao) => {
     setSelectedPrescricao(prescricao);
@@ -549,29 +547,40 @@ export default function DetalhesEncontrista() {
                 {historico.map((item) => {
                     const { hora, data } = formatarHora(item.data_hora);
                     return (
-                        <div key={item.id} className="relative pl-8">
+                        <div key={item.id} className="relative pl-8 group/history-item">
                             <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
                                 <Check size={10} className="text-emerald-700 stroke-[4]" />
                             </div>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 className="font-bold text-slate-800 text-sm">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
-                                        <p className="text-xs text-slate-500 font-medium">{item.prescricao?.dosagem}</p>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h4 className="font-bold text-slate-800 text-sm">{item.prescricao?.nome_medicamento || 'Medicação excluída'}</h4>
+                                            <p className="text-xs text-slate-500 font-medium">{item.prescricao?.dosagem}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-bold text-slate-700">{hora}</p>
+                                            <p className="text-[10px] text-slate-400 uppercase tracking-wide">{data}</p>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm font-bold text-slate-700">{hora}</p>
-                                        <p className="text-[10px] text-slate-400 uppercase tracking-wide">{data}</p>
+                                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50">
+                                        <div className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-500">
+                                            <User size={12} />
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            {formatarNomeEnfermeiro(item.administrador)}
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50">
-                                    <div className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-500">
-                                        <User size={12} />
-                                    </div>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        {formatarNomeEnfermeiro(item.administrador)}
-                                    </p>
-                                </div>
+                                
+                                {/* BOTÃO DE EXCLUIR HISTÓRICO INDIVIDUAL (NOVO) */}
+                                <button 
+                                    onClick={() => setHistoryToDelete(item.id)}
+                                    className="ml-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                    title="Apagar este registro"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
                             </div>
                         </div>
                     );
@@ -583,7 +592,7 @@ export default function DetalhesEncontrista() {
 
       {/* --- MODAIS --- */}
       
-      {/* MODAL ALERTA DE ALERGIA (TURBINADO) */}
+      {/* MODAL ALERTA DE ALERGIA */}
       {allergyWarning && (
         <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 text-center border-4 border-red-100">
@@ -591,31 +600,22 @@ export default function DetalhesEncontrista() {
                     <AlertTriangle className="text-red-600 w-10 h-10" />
                 </div>
                 <h2 className="text-2xl font-black text-red-600 mb-2">ATENÇÃO!</h2>
-                
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6">
                     <p className="text-slate-600 font-medium mb-1 text-sm">O sistema detectou um conflito:</p>
-                    <p className="text-lg font-bold text-red-800 uppercase break-words">
-                        {allergyWarning.message}
-                    </p>
+                    <p className="text-lg font-bold text-red-800 uppercase break-words">{allergyWarning.message}</p>
                 </div>
-
-                <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">
-                    * Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.
-                </p>
-
+                <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">* Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.</p>
                 <div className="flex flex-col gap-3">
                     <button onClick={allergyWarning.onConfirm} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
                         <ThumbsUp size={18} /> Sim, estou ciente e assumo o risco
                     </button>
-                    <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
-                        Cancelar Administração
-                    </button>
+                    <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar Administração</button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO DE PRESCRIÇÃO */}
+      {/* MODAL DE EXCLUSÃO DE PRESCRIÇÃO (Remédio Inteiro) */}
       {medicationToDelete !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-red-50">
@@ -629,6 +629,25 @@ export default function DetalhesEncontrista() {
                 <div className="flex gap-3">
                     <button onClick={() => setMedicationToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
                     <button onClick={confirmDeleteMedication} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Excluir</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL DE EXCLUSÃO DE HISTÓRICO (Registro Único) - NOVO */}
+      {historyToDelete !== null && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-amber-50">
+                <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <History className="text-amber-500 w-8 h-8" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Desfazer Registro?</h2>
+                <p className="text-slate-500 text-sm mb-6">
+                    Você está prestes a apagar <strong>apenas este registro</strong> de administração. O medicamento continuará na lista.
+                </p>
+                <div className="flex gap-3">
+                    <button onClick={() => setHistoryToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                    <button onClick={confirmDeleteHistory} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Apagar Registro</button>
                 </div>
             </div>
         </div>
