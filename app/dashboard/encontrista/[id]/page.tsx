@@ -135,7 +135,7 @@ export default function DetalhesEncontrista() {
   // Controle de Exclusão de Medicação (Remédio inteiro)
   const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
 
-  // NOVO: Controle de Exclusão de Histórico (Registro único)
+  // Controle de Exclusão de Histórico (Registro único)
   const [historyToDelete, setHistoryToDelete] = useState<number | null>(null);
 
   const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
@@ -185,31 +185,46 @@ export default function DetalhesEncontrista() {
     }
   };
 
+  // --- CORREÇÃO AQUI ---
   const verificarConflitoAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return null; 
 
+    // Normaliza o remédio (tira acentos)
     let remedioNormalizado = normalizarTexto(nomeRemedio);
     if (SINONIMOS_MEDICAMENTOS[remedioNormalizado]) {
         remedioNormalizado = SINONIMOS_MEDICAMENTOS[remedioNormalizado];
     }
 
+    // Normaliza as alergias do paciente
     const listaAlergias = pessoa.alergias.split(/[,;]|\be\b/).map(s => normalizarTexto(s)).filter(s => s.length > 2);
 
     for (const alergia of listaAlergias) {
+        // Verifica correspondência direta
         if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
             return `Possível alergia direta a: ${alergia.toUpperCase()}`;
         }
 
+        // Verifica famílias
         for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
             const nomeFamilia = normalizarTexto(familia);
-            if (alergia === nomeFamilia && membros.some(m => remedioNormalizado.includes(m))) {
+            
+            // IMPORTANTE: Normalizar os membros da família para remover acentos antes de comparar
+            // Isso garante que 'codeína' (lista) bata com 'codeina' (input)
+            const membrosNormalizados = membros.map(m => normalizarTexto(m));
+
+            // Cenário 1: Alergia é a Família
+            if (alergia === nomeFamilia && membrosNormalizados.some(m => remedioNormalizado.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} (Família)`;
             }
-            if (remedioNormalizado === nomeFamilia && membros.some(m => alergia.includes(m))) {
+
+            // Cenário 2: Remédio é a Família
+            if (remedioNormalizado === nomeFamilia && membrosNormalizados.some(m => alergia.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} pertence à família ${familia.toUpperCase()}`;
             }
-            const alergiaEstaNaLista = membros.some(m => alergia.includes(m) || m.includes(alergia));
-            const remedioEstaNaLista = membros.some(m => remedioNormalizado.includes(m));
+
+            // Cenário 3: Irmãos (Cruzada)
+            const alergiaEstaNaLista = membrosNormalizados.some(m => alergia.includes(m) || m.includes(alergia));
+            const remedioEstaNaLista = membrosNormalizados.some(m => remedioNormalizado.includes(m));
 
             if (alergiaEstaNaLista && remedioEstaNaLista) {
                 return `Reação Cruzada: ${alergia.toUpperCase()} e o remédio são do grupo ${familia.toUpperCase()}`;
@@ -218,6 +233,7 @@ export default function DetalhesEncontrista() {
     }
     return null;
   };
+  // ---------------------
 
   const calcularStatus = (med: Prescricao) => {
     const ultimoRegistro = historico.find(h => h.prescricao_id === med.id);
@@ -331,22 +347,19 @@ export default function DetalhesEncontrista() {
     setMedicationToDelete(id);
   };
 
-  // Exclui medicação e TUDO que tem nela
+  // Exclui medicação e TUDO que tem nela (2 etapas)
   const confirmDeleteMedication = async () => {
     if (!medicationToDelete) return;
-
     // 1. Limpa o histórico
     const { error: errorHistory } = await supabase.from('historico_administracao').delete().eq('prescricao_id', medicationToDelete);
     if (errorHistory) { alert("Erro ao limpar histórico: " + errorHistory.message); return; }
-
     // 2. Limpa a prescrição
     const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
-
     if (!error) { setMedicationToDelete(null); carregarDados(); } 
     else { alert("Erro ao excluir medicamento: " + error.message); }
   };
 
-  // NOVO: Excluir item do histórico (Individual)
+  // Exclui um único registro de histórico
   const confirmDeleteHistory = async () => {
     if (!historyToDelete) return;
     const { error } = await supabase.from('historico_administracao').delete().eq('id', historyToDelete);
@@ -499,8 +512,25 @@ export default function DetalhesEncontrista() {
 
                 {medicacoes.map(med => {
                     const status = calcularStatus(med);
+                    
+                    // --- VERIFICAÇÃO VISUAL DE ALERGIA NA LISTA ---
+                    const conflito = verificarConflitoAlergia(med.nome_medicamento);
+                    // ----------------------------------------------
+
                     return (
-                        <div key={med.id} className={`bg-white p-5 rounded-3xl shadow-sm border transition-all ${status.bg}`}>
+                        <div key={med.id} className={`p-5 rounded-3xl shadow-sm border transition-all ${conflito ? 'bg-red-50 border-red-200 ring-2 ring-red-100' : 'bg-white ' + status.bg}`}>
+                            
+                            {/* ALERTA DE CONFLITO NO TOPO DO CARD */}
+                            {conflito && (
+                                <div className="mb-3 flex items-start gap-2 bg-red-100/50 p-2 rounded-lg border border-red-200">
+                                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-xs font-bold text-red-700 uppercase">Risco de Alergia Cruzada</p>
+                                        <p className="text-[10px] text-red-600 font-medium leading-tight">{conflito}</p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
@@ -516,9 +546,10 @@ export default function DetalhesEncontrista() {
                                 <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 sm:border-none">
                                     <button 
                                         onClick={() => handleAdministrarClick(med)} 
-                                        className="flex-1 sm:flex-none bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold"
+                                        className={`flex-1 sm:flex-none border px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold ${conflito ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}
                                     >
-                                        <CheckCircle2 size={18} /> Administrar
+                                        {conflito ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} 
+                                        {conflito ? 'Risco!' : 'Administrar'}
                                     </button>
                                     <button 
                                         onClick={() => openDeleteModal(med.id)} 
@@ -573,7 +604,7 @@ export default function DetalhesEncontrista() {
                                     </div>
                                 </div>
                                 
-                                {/* BOTÃO DE EXCLUIR HISTÓRICO INDIVIDUAL (NOVO) */}
+                                {/* BOTÃO DE EXCLUIR HISTÓRICO INDIVIDUAL */}
                                 <button 
                                     onClick={() => setHistoryToDelete(item.id)}
                                     className="ml-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
@@ -600,22 +631,31 @@ export default function DetalhesEncontrista() {
                     <AlertTriangle className="text-red-600 w-10 h-10" />
                 </div>
                 <h2 className="text-2xl font-black text-red-600 mb-2">ATENÇÃO!</h2>
+                
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6">
                     <p className="text-slate-600 font-medium mb-1 text-sm">O sistema detectou um conflito:</p>
-                    <p className="text-lg font-bold text-red-800 uppercase break-words">{allergyWarning.message}</p>
+                    <p className="text-lg font-bold text-red-800 uppercase break-words">
+                        {allergyWarning.message}
+                    </p>
                 </div>
-                <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">* Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.</p>
+
+                <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">
+                    * Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.
+                </p>
+
                 <div className="flex flex-col gap-3">
                     <button onClick={allergyWarning.onConfirm} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
                         <ThumbsUp size={18} /> Sim, estou ciente e assumo o risco
                     </button>
-                    <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar Administração</button>
+                    <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
+                        Cancelar Administração
+                    </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO DE PRESCRIÇÃO (Remédio Inteiro) */}
+      {/* MODAL DE EXCLUSÃO DE PRESCRIÇÃO */}
       {medicationToDelete !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-red-50">
@@ -634,7 +674,7 @@ export default function DetalhesEncontrista() {
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO DE HISTÓRICO (Registro Único) - NOVO */}
+      {/* MODAL DE EXCLUSÃO DE HISTÓRICO (Registro Único) */}
       {historyToDelete !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in duration-200 border-2 border-amber-50">
