@@ -65,10 +65,10 @@ export default function LoginPage() {
             />
           </div>
           
-          <h1 className="text-2xl font-bold text-gray-900">Face a Face</h1>
+          <h1 className="text-2xl font-bold text-orange-600">Face a Face</h1>
           
           {/* --- AQUI ESTÁ A MUDANÇA: Texto mais escuro e levemente negrito --- */}
-          <p className="text-gray-950 font-medium text-sm mt-1">
+          <p className="text-orange-600 font-medium text-sm mt-1">
             Sistema de Gestão de Medicação
           </p>
 
@@ -121,7 +121,7 @@ export default function LoginPage() {
         </form>
         <div className="mt-8 text-center border-t border-gray-300/50 pt-6">
           {/* Melhorei a cor do rodapé também */}
-          <p className="text-xs text-gray-700 font-medium">Igreja Batista Apascentar - Maringá</p>
+          <p className="text-xs text-gray-600 font-medium">Igreja Batista Apascentar - Maringá</p>
         </div>
       </div>
     </div>
