@@ -107,7 +107,7 @@ export default function CadastroPage() {
               name="email"
               type="email" 
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all text-gray-900 bg-white/80" 
-              placeholder="Email do Enfermeiro" 
+              placeholder="Email do Encontreiro" 
               required 
             />
           </div>
