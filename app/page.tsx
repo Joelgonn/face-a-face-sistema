@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { LogIn, Lock, User, Loader2, AlertCircle } from 'lucide-react';
+import { Lock, User, Loader2, AlertCircle } from 'lucide-react';
 import { createClient } from '@/app/utils/supabase/client';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -28,8 +29,6 @@ export default function LoginPage() {
       setErrorMsg("Email ou senha incorretos.");
       setLoading(false);
     } else {
-      // IMPORTANTE: router.refresh() atualiza os Server Components
-      // garantindo que o Middleware veja o cookie atualizado.
       router.refresh(); 
       router.push('/dashboard');
     }
@@ -39,9 +38,19 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-200 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-4 border-orange-500">
         <div className="text-center mb-8">
-          <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-            <LogIn className="w-8 h-8 text-orange-600" />
+          
+          {/* LOGO AJUSTADO - Ocupando todo o círculo */}
+          <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm overflow-hidden">
+            <Image 
+              src="/logo.png"       
+              alt="Logo Face a Face"
+              width={80}            // Mesma largura do container
+              height={80}           // Mesma altura do container
+              className="object-cover w-full h-full" // Preenche todo o espaço
+              priority              
+            />
           </div>
+          
           <h1 className="text-2xl font-bold text-gray-800">Face a Face</h1>
           <p className="text-gray-500 text-sm mt-1">Sistema de Gestão de Medicação</p>
         </div>
