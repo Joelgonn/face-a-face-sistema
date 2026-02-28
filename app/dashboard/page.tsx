@@ -98,16 +98,38 @@ export default function Dashboard() {
     setLoading(false);
   }, [supabase]);
 
+  // =========================================================================
+  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
+  // =========================================================================
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user?.email && (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').includes(user.email)) {
-            setIsAdmin(true);
+        
+        if (user?.email) {
+            // Busca o email na tabela 'admins' que você criou no Supabase
+            const { data: adminData, error } = await supabase
+                .from('admins')
+                .select('email')
+                .eq('email', user.email)
+                .single(); // Espera encontrar 1 registro ou nenhum
+
+            if (error) {
+                // Erro normal se não achar a pessoa na tabela admins, apenas ignora
+                console.log("Usuário não é admin ou erro na tabela:", error.message);
+            }
+
+            // Se encontrou dados, é porque a pessoa está na tabela admins!
+            if (adminData) {
+                setIsAdmin(true);
+            }
         }
         await buscarEncontristas();
     };
     init();
   }, [buscarEncontristas, supabase]);
+  // =========================================================================
+  // --- FIM DA REFATORAÇÃO ---
+  // =========================================================================
 
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {

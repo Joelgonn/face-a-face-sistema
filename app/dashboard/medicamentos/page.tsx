@@ -45,20 +45,34 @@ export default function GestaoMedicamentos() {
     setLoading(false);
   }, [supabase]);
 
-  // Verifica Admin e Inicia
+  // =========================================================================
+  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
+  // =========================================================================
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',');
-        if (user?.email && adminList.includes(user.email)) {
-            setIsAdmin(true);
-        } else {
-            setIsAdmin(false);
+        
+        if (user?.email) {
+            // Consulta a tabela 'admins' em vez da variável de ambiente
+            const { data: adminData } = await supabase
+                .from('admins')
+                .select('email')
+                .eq('email', user.email)
+                .single();
+
+            if (adminData) {
+                setIsAdmin(true);
+            } else {
+                setIsAdmin(false);
+            }
         }
         buscarMedicamentos();
     };
     init();
   }, [buscarMedicamentos, supabase]);
+  // =========================================================================
+  // --- FIM DA REFATORAÇÃO ---
+  // =========================================================================
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAdmin) return; 

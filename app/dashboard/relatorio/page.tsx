@@ -54,18 +54,39 @@ export default function RelatorioPage() {
     setLoading(false);
   }, [supabase]);
 
+  // =========================================================================
+  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
+  // =========================================================================
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user?.email && (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').includes(user.email)) {
-            setIsAdmin(true);
-            carregarRelatorio();
+        
+        if (user?.email) {
+            // Consulta a tabela 'admins' do Supabase
+            const { data: adminData } = await supabase
+                .from('admins')
+                .select('email')
+                .eq('email', user.email)
+                .single();
+
+            // Se encontrou, a pessoa é admin, então carrega o relatório
+            if (adminData) {
+                setIsAdmin(true);
+                carregarRelatorio();
+            } else {
+                // Se não é admin, redireciona de volta para o dashboard
+                window.location.href = '/dashboard';
+            }
         } else {
+            // Se nem estiver logado, manda pro login/dashboard
             window.location.href = '/dashboard';
         }
     };
     init();
   }, [carregarRelatorio, supabase]);
+  // =========================================================================
+  // --- FIM DA REFATORAÇÃO ---
+  // =========================================================================
 
   const handleExportCSV = () => {
     const headers = ["Data/Hora,Paciente,Medicamento,Dosagem,Aplicado Por"];
@@ -85,7 +106,7 @@ export default function RelatorioPage() {
     window.print();
   };
 
-  if (!isAdmin) return null;
+  if (!isAdmin) return null; // Se não for admin, retorna nada enquanto o redirecionamento acontece
   if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2"/> Gerando relatório...</div>;
 
   return (

@@ -18,22 +18,30 @@ const supabaseAdmin = createAdminClient(
 );
 
 // --- Função Auxiliar de Segurança (Blindagem) ---
+// REFATORADO: Agora checa diretamente na tabela 'admins' do Supabase
 async function verificarPermissaoAdmin() {
   // 1. Identifica quem está fazendo a requisição
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // 2. Carrega a lista de Admins permitidos
-  // Remove espaços em branco caso alguém configure "email1, email2" com espaço
-  const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '')
-    .split(',')
-    .map(email => email.trim());
+  // 2. Verifica se o usuário está logado
+  if (!user || !user.email) {
+    throw new Error("Acesso negado. Usuário não autenticado.");
+  }
 
-  // 3. Verifica se o usuário está logado e se o email dele está na lista
-  if (!user || !user.email || !adminList.includes(user.email)) {
+  // 3. Consulta a tabela 'admins' para ver se o email dele está lá
+  const { data: adminData, error } = await supabase
+    .from('admins')
+    .select('email')
+    .eq('email', user.email)
+    .single();
+
+  // Se der erro ou não encontrar o dado, bloqueia a ação na hora!
+  if (error || !adminData) {
     throw new Error("Acesso negado. Você não tem permissão de administrador.");
   }
 
+  // Se passou, retorna o usuário para a ação ser executada
   return user;
 }
 
