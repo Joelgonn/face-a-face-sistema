@@ -45,7 +45,7 @@ export default function DashboardClient({
   const [isAdmin] = useState(isAdminInitial);
   const [loading, setLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
-  const [showStats, setShowStats] = useState(false); // NOVO: Controle das estatísticas
+  const [showStats, setShowStats] = useState(false);
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
   const [importing, setImporting] = useState(false);
@@ -328,10 +328,10 @@ export default function DashboardClient({
             {isAdmin && (
                 <>
                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
-                    <button onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none">
+                    <button onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all">
                         <Upload size={20} /> <span className="hidden lg:inline">Importar</span>
                     </button>
-                    <button onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none">
+                    <button onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all">
                         <Trash2 size={20} /> <span className="hidden lg:inline">Zerar</span>
                     </button>
                 </>
@@ -350,13 +350,13 @@ export default function DashboardClient({
               <div key={pessoa.id} className={`bg-white rounded-[2rem] border-l-8 ${status.bordaL} shadow-md border-y border-r border-slate-100 overflow-hidden active:scale-[0.98] transition-transform`}>
                 <div className="p-5">
                     <div className="flex justify-between items-start gap-3">
-                        <div className="flex gap-4">
+                        <div className="flex gap-4 min-w-0">
                             {/* Avatar com ID Laranja Escuro */}
                             <div className="w-12 h-12 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 shrink-0 text-sm shadow-inner">
                                 {pessoa.id}
                             </div>
-                            <div>
-                                <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-black text-slate-800 leading-tight block mb-1">
+                            <div className="min-w-0">
+                                <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-black text-slate-800 leading-tight block mb-1 truncate">
                                     {pessoa.nome}
                                 </Link>
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -364,7 +364,7 @@ export default function DashboardClient({
                                         {status.icone} {status.texto}
                                     </span>
                                 </div>
-                                {pessoa.responsavel && <p className="text-xs text-slate-500 font-medium mt-2">Resp: {pessoa.responsavel}</p>}
+                                {pessoa.responsavel && <p className="text-xs text-slate-500 font-medium mt-2 truncate">Resp: {pessoa.responsavel}</p>}
                             </div>
                         </div>
                         {/* Botão de Check-in Redondo */}
@@ -388,52 +388,82 @@ export default function DashboardClient({
           })}
         </div>
 
-        {/* TABELA DESKTOP PREMIUM */}
-        <div className="hidden md:block bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="bg-slate-50/50 text-slate-400 text-[11px] uppercase tracking-[0.15em] font-black border-b border-slate-100">
-                        <th className="p-6">Status</th>
-                        <th className="p-6">Paciente</th>
-                        <th className="p-6 text-center">Check-in</th>
-                        <th className="p-6">Responsável</th>
-                        <th className="p-6">Alergias</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                    {loading ? <tr><td colSpan={5} className="p-12 text-center text-slate-400 font-bold">Carregando lista...</td></tr> : sorted.length === 0 ? <tr><td colSpan={5} className="p-12 text-center text-slate-400 font-bold">Nenhum resultado encontrado.</td></tr> : sorted.map((pessoa) => {
+        {/* LISTA DESKTOP PREMIUM (GRID CARDS) */}
+        <div className="hidden md:block space-y-3">
+            
+            {/* Cabeçalho Falso (Header) */}
+            <div className="grid grid-cols-12 gap-4 px-8 py-2 text-slate-400 text-[11px] uppercase tracking-[0.15em] font-black">
+                <div className="col-span-2">Status</div>
+                <div className="col-span-4 pl-2">Paciente</div>
+                <div className="col-span-2 text-center">Check-in</div>
+                <div className="col-span-2">Responsável</div>
+                <div className="col-span-2">Alergias</div>
+            </div>
+
+            {/* Listagem de Cards Desktop */}
+            {loading ? (
+                <div className="bg-white rounded-3xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+                    Carregando lista...
+                </div>
+            ) : sorted.length === 0 ? (
+                <div className="bg-white rounded-3xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
+                    Nenhum resultado encontrado.
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {sorted.map((pessoa) => {
                         const status = getStatusPessoa(pessoa);
                         return (
-                        <tr key={pessoa.id} className="hover:bg-slate-50/50 transition-all group">
-                            <td className="p-6">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${status.cor}`}>
-                                    {status.icone} {status.texto}
-                                </span>
-                            </td>
-                            <td className="p-6">
-                                <div className="flex items-center gap-4">
-                                    {/* Avatar com ID Laranja Escuro Desktop */}
-                                    <div className="w-10 h-10 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 text-sm shrink-0 shadow-inner">
+                            // Destaque: Efeito Hover com Identidade Laranja (group, bg-orange, shadow-orange)
+                            <div key={pessoa.id} className={`group grid grid-cols-12 gap-4 items-center bg-white hover:bg-orange-50/40 rounded-3xl border-l-8 ${status.bordaL} border-y border-r border-slate-100 shadow-sm hover:shadow-xl hover:shadow-orange-500/15 hover:scale-[1.01] transition-all duration-300 p-4 px-6`}>
+                                
+                                {/* Status */}
+                                <div className="col-span-2">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-colors ${status.cor}`}>
+                                        {status.icone} {status.texto}
+                                    </span>
+                                </div>
+
+                                {/* Paciente */}
+                                <div className="col-span-4 flex items-center gap-4 min-w-0">
+                                    <div className="w-10 h-10 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 text-sm shrink-0 shadow-inner group-hover:bg-orange-500 group-hover:text-white transition-colors duration-300">
                                         {pessoa.id}
                                     </div>
-                                    <div>
-                                        <Link href={`/dashboard/encontrista/${pessoa.id}`} className="font-black text-slate-800 text-lg hover:text-orange-600 transition-colors">{pessoa.nome}</Link>
-                                    </div>
+                                    <Link href={`/dashboard/encontrista/${pessoa.id}`} className="font-black text-slate-800 text-lg group-hover:text-orange-600 transition-colors truncate">
+                                        {pessoa.nome}
+                                    </Link>
                                 </div>
-                            </td>
-                            <td className="p-6 text-center">
-                                <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black border shadow-sm transition-all ${pessoa.check_in ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
-                                    {pessoa.check_in ? <UserCheck size={16} /> : <UserX size={16} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
-                                </button>
-                            </td>
-                            <td className="p-6 text-slate-500 font-bold text-sm">{pessoa.responsavel || '-'}</td>
-                            <td className="p-6">
-                                {pessoa.alergias ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100 max-w-[200px] truncate" title={pessoa.alergias}><AlertCircle size={14} className="shrink-0" /> <span className="truncate">{pessoa.alergias}</span></span> : <span className="text-slate-300 text-xs font-bold">-</span>}
-                            </td>
-                        </tr>
-                    )})}
-                </tbody>
-            </table>
+
+                                {/* Check-in */}
+                                <div className="col-span-2 flex justify-center">
+                                    <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black border shadow-sm transition-all ${pessoa.check_in ? 'bg-emerald-50 text-emerald-700 border-emerald-200 group-hover:bg-emerald-100' : 'bg-white text-slate-500 border-slate-200 group-hover:bg-white group-hover:border-slate-300'}`}>
+                                        {pessoa.check_in ? <UserCheck size={16} /> : <UserX size={16} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
+                                    </button>
+                                </div>
+
+                                {/* Responsável */}
+                                <div className="col-span-2 text-slate-500 font-bold text-sm truncate pr-4">
+                                    {pessoa.responsavel || '-'}
+                                </div>
+
+                                {/* Alergias */}
+                                <div className="col-span-2 min-w-0">
+                                    {pessoa.alergias ? (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100 max-w-full" title={pessoa.alergias}>
+                                            <AlertCircle size={14} className="shrink-0" /> 
+                                            <span className="truncate">{pessoa.alergias}</span>
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-300 text-xs font-bold">-</span>
+                                    )}
+                                </div>
+
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
         </div>
 
       </main>
