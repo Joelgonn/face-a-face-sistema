@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import Papa from 'papaparse'; // IMPORTAÇÃO DO PAPAPARSE
 
 // --- Interfaces ---
 interface Historico { data_hora: string; }
@@ -30,7 +31,6 @@ interface Encontrista {
   prescricoes: Prescricao[];
 }
 
-// Interface para o Toast Notification
 interface ToastNotification {
   type: 'success' | 'error' | 'warning';
   title: string;
@@ -38,51 +38,41 @@ interface ToastNotification {
 }
 
 export default function Dashboard() {
-  // --- Estados Principais ---
   const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  
-  // Estado para Notificação Flutuante (Toast)
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
-  // Estados de Importação (Substitui o confirm nativo)
   const [importing, setImporting] = useState(false);
   const [fileToImport, setFileToImport] = useState<File | null>(null);
   const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
-  // Modais Gerais
-  const [isModalOpen, setIsModalOpen] = useState(false); // Novo Encontrista
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  // Form Novo Encontrista
   const [novoNome, setNovoNome] = useState('');
   const [novoResponsavel, setNovoResponsavel] = useState('');
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
   
-  // Modal Zerar Sistema
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  // Modal Check-in
   const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
 
-  // --- Helper de Notificação ---
   const showToast = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
     setToast({ type, title, message });
-    setTimeout(() => setToast(null), 4000); // Some após 4 segundos
+    setTimeout(() => setToast(null), 4000); 
   };
 
-  // --- LÓGICA E CÁLCULOS ---
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
@@ -98,38 +88,22 @@ export default function Dashboard() {
     setLoading(false);
   }, [supabase]);
 
-  // =========================================================================
-  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
-  // =========================================================================
+  // VERIFICAÇÃO DE ADMIN PELA TABELA DO SUPABASE
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        
         if (user?.email) {
-            // Busca o email na tabela 'admins' que você criou no Supabase
-            const { data: adminData, error } = await supabase
+            const { data: adminData } = await supabase
                 .from('admins')
                 .select('email')
                 .eq('email', user.email)
-                .single(); // Espera encontrar 1 registro ou nenhum
-
-            if (error) {
-                // Erro normal se não achar a pessoa na tabela admins, apenas ignora
-                console.log("Usuário não é admin ou erro na tabela:", error.message);
-            }
-
-            // Se encontrou dados, é porque a pessoa está na tabela admins!
-            if (adminData) {
-                setIsAdmin(true);
-            }
+                .single();
+            if (adminData) setIsAdmin(true);
         }
         await buscarEncontristas();
     };
     init();
   }, [buscarEncontristas, supabase]);
-  // =========================================================================
-  // --- FIM DA REFATORAÇÃO ---
-  // =========================================================================
 
   const getStatusPessoa = (pessoa: Encontrista) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
@@ -174,7 +148,6 @@ export default function Dashboard() {
   const confirmCheckIn = async () => {
     if (!checkInTarget) return;
     const { id, status } = checkInTarget;
-    // Atualização Otimista
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: !status } : p));
     setCheckInTarget(null);
     await supabase.from('encontristas').update({ check_in: !status }).eq('id', id);
@@ -226,50 +199,63 @@ export default function Dashboard() {
     setIsResetting(false);
   };
 
-  // 1. O usuário seleciona o arquivo (NÃO processa ainda)
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
         setFileToImport(file);
-        setIsImportConfirmOpen(true); // Abre o modal customizado
+        setIsImportConfirmOpen(true); 
     }
-    // Reseta o input para permitir selecionar o mesmo arquivo novamente se cancelar
     event.target.value = '';
   };
 
-  // 2. O usuário confirma no Modal -> Processa o arquivo
+  // =========================================================================
+  // --- INÍCIO DA REFATORAÇÃO: IMPORTAÇÃO COM PAPAPARSE ---
+  // =========================================================================
   const processFileImport = () => {
     if (!fileToImport) return;
-
     setImporting(true);
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-        const lines = (e.target?.result as string).split('\n');
+
+    Papa.parse(fileToImport, {
+      header: false, // Lê como array [coluna0, coluna1, coluna2...]
+      skipEmptyLines: true, // Ignora linhas em branco automaticamente
+      complete: async (results) => {
         let count = 0;
-        for (const line of lines) {
-            const parts = line.trim().split(','); 
-            if (parts.length >= 2 && !line.startsWith('#')) {
+        
+        for (const parts of results.data as string[][]) {
+          // Se a linha tem dados e a primeira coluna NÃO começa com # (cabeçalho)
+          if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {
+            
+            const nome = parts[1]?.trim();
+            // Só insere se tiver nome
+            if (nome) {
                 const { error } = await supabase.from('encontristas').insert({ 
-                    nome: parts[1]?.trim(), 
-                    alergias: parts[2]?.replace(/['"]+/g, '').trim(), 
+                    nome: nome, 
+                    alergias: parts[2]?.trim() || null, 
                     observacoes: parts[3]?.trim() || null, 
                     responsavel: parts[4]?.trim() || null, 
                     check_in: false 
                 });
                 if (!error) count++;
             }
+          }
         }
         
         showToast('success', 'Importação Concluída', `${count} registros importados com sucesso.`);
-        
         setImporting(false);
         setIsImportConfirmOpen(false);
         setFileToImport(null);
         buscarEncontristas();
-    };
-    reader.readAsText(fileToImport, 'UTF-8');
+      },
+      error: (error) => {
+        showToast('error', 'Erro no Arquivo', 'Não foi possível ler o formato do arquivo.');
+        console.error("Erro PapaParse:", error);
+        setImporting(false);
+      }
+    });
   };
+  // =========================================================================
+  // --- FIM DA REFATORAÇÃO ---
+  // =========================================================================
 
   const filtered = encontristas.filter(p => {
     const term = searchTerm.toLowerCase().trim();
@@ -438,7 +424,7 @@ export default function Dashboard() {
 
       {/* --- COMPONENTES VISUAIS (Toasts e Modais) --- */}
 
-      {/* 1. NOTIFICAÇÃO TOAST FLUTUANTE (Substitui os alerts de sucesso) */}
+      {/* 1. NOTIFICAÇÃO TOAST FLUTUANTE */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-right-10 fade-in duration-300">
           <div className={`flex items-center gap-4 p-4 rounded-2xl shadow-2xl border backdrop-blur-md min-w-[300px] ${
@@ -466,7 +452,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 2. MODAL CONFIRMAR IMPORTAÇÃO (Substitui o confirm nativo) */}
+      {/* 2. MODAL CONFIRMAR IMPORTAÇÃO PAPAPARSE */}
       {isImportConfirmOpen && fileToImport && (
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center border-4 border-orange-50">
@@ -493,7 +479,7 @@ export default function Dashboard() {
                         disabled={importing}
                         className="flex-1 py-3 bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 shadow-lg shadow-orange-200 transition-all flex items-center justify-center gap-2"
                     >
-                        {importing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Processar'}
+                        {importing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Processar CSV'}
                     </button>
                 </div>
             </div>

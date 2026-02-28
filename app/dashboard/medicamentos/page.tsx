@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
 import { ArrowLeft, Upload, Search, Trash2, Plus, Loader2, Save, ChevronDown, Stethoscope, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import Papa from 'papaparse'; // IMPORTAÇÃO DO PAPAPARSE
 
 interface Medicamento {
   id: number;
@@ -45,15 +46,12 @@ export default function GestaoMedicamentos() {
     setLoading(false);
   }, [supabase]);
 
-  // =========================================================================
-  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
-  // =========================================================================
+  // Verifica Admin no Banco de Dados
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (user?.email) {
-            // Consulta a tabela 'admins' em vez da variável de ambiente
             const { data: adminData } = await supabase
                 .from('admins')
                 .select('email')
@@ -70,59 +68,68 @@ export default function GestaoMedicamentos() {
     };
     init();
   }, [buscarMedicamentos, supabase]);
-  // =========================================================================
-  // --- FIM DA REFATORAÇÃO ---
-  // =========================================================================
 
+  // =========================================================================
+  // --- INÍCIO DA REFATORAÇÃO: IMPORTAÇÃO COM PAPAPARSE ---
+  // =========================================================================
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAdmin) return; 
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!confirm("Deseja importar a lista de medicamentos?")) return; // Mantive aqui pois é ação de admin massiva, mas pode ser modal também se preferir
+    if (!confirm("Deseja importar a lista de medicamentos?")) {
+        if (fileInputRef.current) fileInputRef.current.value = ''; // Limpa o input se cancelar
+        return; 
+    }
 
     setImporting(true);
-    const reader = new FileReader();
 
-    reader.onload = async (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n');
+    Papa.parse(file, {
+      header: false, // Lê como array: [Nome, Dosagem, Posologia, Indicacao]
+      skipEmptyLines: true, // Ignora linhas em branco automaticamente
+      // Tenta detectar automaticamente se estão usando vírgula ou ponto e vírgula
+      complete: async (results) => {
         let count = 0;
         
-        const cleanAndTrim = (s: string | undefined) => {
-            if (!s) return null;
-            let cleaned = s.trim();
-            if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.slice(1, -1);
-            if (cleaned.startsWith("'") && cleaned.endsWith("'")) cleaned = cleaned.slice(1, -1);
-            return cleaned.replace(/""/g, '"').trim();
-        };
+        // results.data é um array com as linhas do CSV.
+        for (const parts of results.data as string[][]) {
+            
+            // Verifica se a linha tem pelo menos Nome e Dosagem e não é um cabeçalho (começando com #)
+            if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) { 
+                
+                const nome = parts[0]?.trim();
+                const dosagem = parts[1]?.trim();
+                const posologia = parts[2]?.trim() || null; 
+                const indicacao = parts[3]?.trim() || null; 
 
-        for (const line of lines) {
-            const cleanLine = line.trim();
-            if (!cleanLine) continue;
-            let parts = cleanLine.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/g);
-            if (parts.length < 2) parts = cleanLine.split(';'); 
-
-            const cleanParts = parts.map(s => cleanAndTrim(s));
-
-            if (cleanParts.length >= 2) { 
-                const nome = cleanParts[0];
-                const dosagem = cleanParts[1];
-                const posologia = cleanParts[2] || null; 
-                const indicacao = cleanParts[3] || null; 
-
+                // Só insere se nome e dosagem não estiverem vazios
                 if (nome && dosagem) {
-                    const { error } = await supabase.from('medicamentos').insert({ nome, dosagem, indicacao, posologia });
+                    const { error } = await supabase.from('medicamentos').insert({ 
+                        nome, 
+                        dosagem, 
+                        indicacao, 
+                        posologia 
+                    });
                     if (!error) count++;
                 }
             }
         }
-        alert(`${count} medicamentos importados!`);
+        
+        alert(`${count} medicamentos importados com sucesso!`);
         setImporting(false);
         buscarMedicamentos();
+        if (fileInputRef.current) fileInputRef.current.value = ''; // Reseta o input
+      },
+      error: (error) => {
+        alert('Erro ao ler o arquivo CSV. Verifique a formatação.');
+        console.error("Erro PapaParse:", error);
+        setImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file, 'UTF-8'); 
+      }
+    });
   };
+  // =========================================================================
+  // --- FIM DA REFATORAÇÃO ---
+  // =========================================================================
 
   // 1. Solicitar Exclusão (Abre Modal)
   const requestDelete = (id: number, e: React.MouseEvent) => {
