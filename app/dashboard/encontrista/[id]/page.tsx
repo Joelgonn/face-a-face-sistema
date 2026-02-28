@@ -76,8 +76,9 @@ const formatarHora = (isoString: string | null) => {
   if (!isoString) return { hora: '--:--', data: '--/--' };
   const data = new Date(isoString);
   return {
-    hora: data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    data: data.toLocaleDateString('pt-BR')
+    // Força o fuso horário de Brasília na hora de exibir
+    hora: data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
+    data: data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   };
 };
 
@@ -216,7 +217,7 @@ export default function DetalhesEncontrista() {
     const dataProxima = new Date(dataUltima.getTime() + intervaloHoras * 60 * 60 * 1000);
     const agora = new Date();
     
-    const horaFormatada = dataProxima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const horaFormatada = dataProxima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
     const diaFormatado = dataProxima.getDate() !== agora.getDate() ? `(${dataProxima.getDate()}/${dataProxima.getMonth()+1})` : '';
 
     if (agora > dataProxima) {
@@ -380,19 +381,36 @@ export default function DetalhesEncontrista() {
 
   const confirmarAdministracao = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPrescricao || !horaAdministracao) return;
-    const dataHoje = new Date();
-    const [horas, minutos] = horaAdministracao.split(':').map(Number);
-    dataHoje.setHours(horas); dataHoje.setMinutes(minutos); dataHoje.setSeconds(0);
+    if (!selectedPrescricao || !horaAdministracao || !pessoa) return;
     setSaving(true);
+    
     const { data: { user } } = await supabase.auth.getUser();
     
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    
+    // Fuso de Brasília (-03:00)
+    const dataHoraFixa = `${ano}-${mes}-${dia}T${horaAdministracao}:00.000-03:00`;
+
+    // 1. Salva o histórico da medicação
     await supabase.from('historico_administracao').insert({ 
         prescricao_id: selectedPrescricao.id, 
-        data_hora: dataHoje.toISOString(), 
+        data_hora: dataHoraFixa, 
         administrador: user?.email || "Desconhecido" 
     });
-    setSaving(false); setIsAdministerModalOpen(false); carregarDados();
+
+    // 2. AUTO CHECK-IN: Se ele estava ausente, marca como presente automaticamente
+    if (!pessoa.check_in) {
+        await supabase.from('encontristas').update({ check_in: true }).eq('id', pessoa.id);
+        // Atualiza a tela imediatamente (Optimistic UI) antes mesmo do carregarDados terminar
+        setPessoa({ ...pessoa, check_in: true }); 
+    }
+    
+    setSaving(false); 
+    setIsAdministerModalOpen(false); 
+    carregarDados();
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2" /> Carregando...</div>;
