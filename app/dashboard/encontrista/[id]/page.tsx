@@ -413,39 +413,46 @@ export default function DetalhesEncontrista() {
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         
-        {/* --- CARD DE PERFIL COM O ID PULSANTE --- */}
+        {/* --- CARD DE PERFIL --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 relative overflow-hidden">
-           
-           {/* BADGE DE ID PULSANTE (NOVO) */}
-           <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex flex-col items-end z-10">
-               <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-0.5 mr-1">ID</span>
-               <div className="bg-gradient-to-tr from-orange-500 to-orange-400 text-white font-black text-xl sm:text-2xl px-3 py-1 sm:px-4 sm:py-1.5 rounded-xl sm:rounded-2xl animate-pulse shadow-lg shadow-orange-300/50 border-2 border-white">
-                   #{pessoa.id}
-               </div>
-           </div>
-
-           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-white shadow-orange-200 shadow-lg shrink-0">
-                    <User size={32} />
+           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+                
+                {/* Avatar */}
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-white shadow-orange-200 shadow-lg shrink-0">
+                    <User size={36} />
                 </div>
-                {/* O pr-20 garante que o texto não sobreponha a badge do ID no mobile */}
-                <div className="flex-1 pr-20 sm:pr-24">
-                    <h1 className="text-2xl font-bold text-slate-800 leading-tight break-words">{pessoa.nome}</h1>
-                    <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
-                        <Shield size={14} />
-                        <span>Responsável: {pessoa.responsavel || ''}</span>
+                
+                {/* Info & ID */}
+                <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-3 mb-1">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 leading-tight break-words">
+                            {pessoa.nome}
+                        </h1>
+                        
+                        {/* BADGE DE ID PULSANTE (AGORA VERDE E SEM A HASHTAG) */}
+                        <div className="bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white font-black px-3 py-1 rounded-xl animate-pulse shadow-md shadow-emerald-300/50 flex items-center gap-1.5 border border-emerald-300">
+                            <span className="text-[12px] uppercase tracking-widest opacity-90 font-bold">ID</span>
+                            <span className="text-xl leading-none">{pessoa.id}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-2 text-slate-500 text-sm font-medium">
+                        <Shield size={16} />
+                        <span>Responsável: {pessoa.responsavel || 'Não informado'}</span>
                     </div>
                 </div>
-                <div className="flex gap-2 mt-2 sm:mt-0">
+
+                {/* Botões de Ação */}
+                <div className="flex gap-2 mt-4 sm:mt-0 w-full sm:w-auto">
                     <button onClick={() => {
                         setEditNome(pessoa.nome || ''); setEditResponsavel(pessoa.responsavel || '');
                         setEditAlergias(pessoa.alergias || ''); setEditObservacoes(pessoa.observacoes || '');
                         setIsEditModalOpen(true);
-                    }} className="px-4 py-2 bg-slate-100 hover:bg-orange-200 text-orange-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
-                        <Pencil size={16} /> <span className="hidden sm:inline">Editar</span>
+                    }} className="flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 bg-slate-100 hover:bg-orange-100 text-orange-600 rounded-xl text-sm font-bold transition-colors flex items-center gap-2">
+                        <Pencil size={18} /> <span>Editar</span>
                     </button>
-                    <div className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 border ${pessoa.check_in ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
-                        {pessoa.check_in ? <><UserCheck size={16}/> Presente</> : 'Ausente'}
+                    <div className={`flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 rounded-xl text-sm font-bold flex items-center gap-2 border ${pessoa.check_in ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                        {pessoa.check_in ? <><UserCheck size={18}/> Presente</> : 'Ausente'}
                     </div>
                 </div>
            </div>
