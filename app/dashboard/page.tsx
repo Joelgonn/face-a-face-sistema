@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
 import { zerarSistemaCompleto } from '@/app/actions/system';
+import { Database } from '@/types/supabase'; 
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, Lock, AlertTriangle, Shield,
@@ -11,25 +12,18 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import Papa from 'papaparse'; // IMPORTAÇÃO DO PAPAPARSE
+import Papa from 'papaparse'; 
 
-// --- Interfaces ---
-interface Historico { data_hora: string; }
-interface Prescricao {
-  id: number;
-  posologia: string;
-  horario_inicial: string;
-  historico_administracao: Historico[];
-}
-interface Encontrista {
-  id: number;
-  nome: string;
-  alergias: string | null;
-  responsavel: string | null;
-  check_in: boolean;
-  observacoes: string | null;
-  prescricoes: Prescricao[];
-}
+// --- TIPAGEM AVANÇADA ---
+type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
+type PrescricaoRow = Database['public']['Tables']['prescricoes']['Row'];
+type HistoricoRow = Database['public']['Tables']['historico_administracao']['Row'];
+
+type EncontristaDashboard = EncontristaRow & {
+  prescricoes: (Pick<PrescricaoRow, 'id' | 'posologia' | 'horario_inicial'> & {
+    historico_administracao: Pick<HistoricoRow, 'data_hora'>[]
+  })[]
+};
 
 interface ToastNotification {
   type: 'success' | 'error' | 'warning';
@@ -38,7 +32,8 @@ interface ToastNotification {
 }
 
 export default function Dashboard() {
-  const [encontristas, setEncontristas] = useState<Encontrista[]>([]);
+  const [encontristas, setEncontristas] = useState<EncontristaDashboard[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
@@ -83,12 +78,15 @@ export default function Dashboard() {
       .select(`*, prescricoes (id, posologia, horario_inicial, historico_administracao (data_hora))`)
       .order('nome', { ascending: true });
 
-    if (error) console.error(error);
-    else setEncontristas((data as unknown as Encontrista[]) || []);
+    if (error) {
+        console.error(error);
+    } else {
+        setEncontristas((data as unknown) as EncontristaDashboard[] || []);
+    }
     setLoading(false);
   }, [supabase]);
 
-  // VERIFICAÇÃO DE ADMIN PELA TABELA DO SUPABASE
+  // VERIFICAÇÃO DE ADMIN
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -105,7 +103,7 @@ export default function Dashboard() {
     init();
   }, [buscarEncontristas, supabase]);
 
-  const getStatusPessoa = (pessoa: Encontrista) => {
+  const getStatusPessoa = (pessoa: EncontristaDashboard) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { cor: 'bg-slate-100 text-slate-400 border-slate-200', texto: 'Sem meds', prioridade: 0 };
     }
@@ -113,14 +111,21 @@ export default function Dashboard() {
     let statusGeral = 3; 
     
     for (const med of pessoa.prescricoes) {
+      if (!med.posologia || !med.horario_inicial) continue;
+
       const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
       if (!match) continue; 
       
       const intervaloHoras = parseInt(match[1]);
-      const historico = med.historico_administracao?.sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime());
+      
+      // CORREÇÃO AQUI: adicionamos 'as string' para garantir ao TS que a data será uma string válida
+      const historico = med.historico_administracao?.sort((a, b) => 
+        new Date(b.data_hora as string).getTime() - new Date(a.data_hora as string).getTime()
+      );
       const ultimoRegistro = historico?.[0];
       
-      let dataBase = ultimoRegistro ? new Date(ultimoRegistro.data_hora) : null;
+      // CORREÇÃO AQUI: Verificando se o ultimoRegistro.data_hora existe
+      let dataBase = ultimoRegistro?.data_hora ? new Date(ultimoRegistro.data_hora as string) : null;
       
       if (!dataBase) {
         const [hora, minuto] = med.horario_inicial.split(':').map(Number);
@@ -141,8 +146,8 @@ export default function Dashboard() {
     return { cor: 'bg-green-100 text-green-700 border-green-200', texto: 'Em dia', prioridade: 1 };
   };
 
-  const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => {
-    setCheckInTarget({ id, status: currentStatus, nome });
+  const requestCheckIn = (id: number, currentStatus: boolean | null, nome: string) => {
+    setCheckInTarget({ id, status: currentStatus || false, nome });
   };
 
   const confirmCheckIn = async () => {
@@ -208,25 +213,21 @@ export default function Dashboard() {
     event.target.value = '';
   };
 
-  // =========================================================================
-  // --- INÍCIO DA REFATORAÇÃO: IMPORTAÇÃO COM PAPAPARSE ---
-  // =========================================================================
+  // IMPORTAÇÃO VIA PAPAPARSE
   const processFileImport = () => {
     if (!fileToImport) return;
     setImporting(true);
 
     Papa.parse(fileToImport, {
-      header: false, // Lê como array [coluna0, coluna1, coluna2...]
-      skipEmptyLines: true, // Ignora linhas em branco automaticamente
+      header: false, 
+      skipEmptyLines: true, 
       complete: async (results) => {
         let count = 0;
         
         for (const parts of results.data as string[][]) {
-          // Se a linha tem dados e a primeira coluna NÃO começa com # (cabeçalho)
           if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {
             
             const nome = parts[1]?.trim();
-            // Só insere se tiver nome
             if (nome) {
                 const { error } = await supabase.from('encontristas').insert({ 
                     nome: nome, 
@@ -253,13 +254,12 @@ export default function Dashboard() {
       }
     });
   };
-  // =========================================================================
-  // --- FIM DA REFATORAÇÃO ---
-  // =========================================================================
 
   const filtered = encontristas.filter(p => {
     const term = searchTerm.toLowerCase().trim();
-    return p.nome.toLowerCase().includes(term) || p.responsavel?.toLowerCase().includes(term) || (term && p.id === Number(term));
+    const nome = p.nome || '';
+    const responsavel = p.responsavel || '';
+    return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || (term && p.id === Number(term));
   });
 
   const sorted = [...filtered].sort((a, b) => getStatusPessoa(b).prioridade - getStatusPessoa(a).prioridade);
@@ -333,7 +333,6 @@ export default function Dashboard() {
           <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
             {isAdmin && (
                 <>
-                    {/* Input invisível para seleção de arquivo */}
                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
                     
                     <button onClick={() => fileInputRef.current?.click()} className="bg-white text-gray-600 border border-orange-200 hover:bg-orange-50 px-4 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm whitespace-nowrap transition-colors">
@@ -423,8 +422,7 @@ export default function Dashboard() {
       </main>
 
       {/* --- COMPONENTES VISUAIS (Toasts e Modais) --- */}
-
-      {/* 1. NOTIFICAÇÃO TOAST FLUTUANTE */}
+      
       {toast && (
         <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-right-10 fade-in duration-300">
           <div className={`flex items-center gap-4 p-4 rounded-2xl shadow-2xl border backdrop-blur-md min-w-[300px] ${
@@ -452,7 +450,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 2. MODAL CONFIRMAR IMPORTAÇÃO PAPAPARSE */}
       {isImportConfirmOpen && fileToImport && (
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center border-4 border-orange-50">
@@ -486,7 +483,6 @@ export default function Dashboard() {
          </div>
       )}
 
-      {/* 3. MODAL DE CHECK-IN / CHECK-OUT */}
       {checkInTarget && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200 text-center">
@@ -520,7 +516,6 @@ export default function Dashboard() {
          </div>
       )}
 
-      {/* 4. MODAL NOVO ENCONTRISTA */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -546,7 +541,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 5. MODAL ZERAR SISTEMA */}
       {isResetModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">

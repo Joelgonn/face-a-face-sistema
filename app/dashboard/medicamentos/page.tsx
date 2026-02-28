@@ -2,32 +2,29 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
+// IMPORTAÇÃO DA TIPAGEM SEGURA
+import { Database } from '@/types/supabase';
 import { ArrowLeft, Upload, Search, Trash2, Plus, Loader2, Save, ChevronDown, Stethoscope, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import Papa from 'papaparse'; // IMPORTAÇÃO DO PAPAPARSE
+import Papa from 'papaparse'; 
 
-interface Medicamento {
-  id: number;
-  nome: string;
-  dosagem: string | null;
-  posologia: string | null;
-  indicacao: string | null;
-  cuidado: string | null;
-}
+// --- TIPAGEM AUTOMÁTICA ---
+// Pegamos a definição exata da tabela 'medicamentos'
+type MedicamentoRow = Database['public']['Tables']['medicamentos']['Row'];
 
 export default function GestaoMedicamentos() {
-  const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
+  // Usamos o tipo seguro aqui
+  const [medicamentos, setMedicamentos] = useState<MedicamentoRow[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // Estado para controlar qual card está expandido
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [medToDelete, setMedToDelete] = useState<number | null>(null); // Novo estado para exclusão
+  const [medToDelete, setMedToDelete] = useState<number | null>(null); 
 
   const [novoNome, setNovoNome] = useState('');
   const [novaDosagem, setNovaDosagem] = useState('');
@@ -35,7 +32,6 @@ export default function GestaoMedicamentos() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
-  // Busca dados
   const buscarMedicamentos = useCallback(async () => {
     const { data, error } = await supabase
       .from('medicamentos')
@@ -46,54 +42,42 @@ export default function GestaoMedicamentos() {
     setLoading(false);
   }, [supabase]);
 
-  // Verifica Admin no Banco de Dados
+  // Verifica Admin no Banco
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        
         if (user?.email) {
             const { data: adminData } = await supabase
                 .from('admins')
                 .select('email')
                 .eq('email', user.email)
                 .single();
-
-            if (adminData) {
-                setIsAdmin(true);
-            } else {
-                setIsAdmin(false);
-            }
+            if (adminData) setIsAdmin(true);
         }
         buscarMedicamentos();
     };
     init();
   }, [buscarMedicamentos, supabase]);
 
-  // =========================================================================
-  // --- INÍCIO DA REFATORAÇÃO: IMPORTAÇÃO COM PAPAPARSE ---
-  // =========================================================================
+  // IMPORTAÇÃO VIA PAPAPARSE
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAdmin) return; 
     const file = event.target.files?.[0];
     if (!file) return;
     if (!confirm("Deseja importar a lista de medicamentos?")) {
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Limpa o input se cancelar
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
         return; 
     }
 
     setImporting(true);
 
     Papa.parse(file, {
-      header: false, // Lê como array: [Nome, Dosagem, Posologia, Indicacao]
-      skipEmptyLines: true, // Ignora linhas em branco automaticamente
-      // Tenta detectar automaticamente se estão usando vírgula ou ponto e vírgula
+      header: false, 
+      skipEmptyLines: true, 
       complete: async (results) => {
         let count = 0;
         
-        // results.data é um array com as linhas do CSV.
         for (const parts of results.data as string[][]) {
-            
-            // Verifica se a linha tem pelo menos Nome e Dosagem e não é um cabeçalho (começando com #)
             if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) { 
                 
                 const nome = parts[0]?.trim();
@@ -101,7 +85,6 @@ export default function GestaoMedicamentos() {
                 const posologia = parts[2]?.trim() || null; 
                 const indicacao = parts[3]?.trim() || null; 
 
-                // Só insere se nome e dosagem não estiverem vazios
                 if (nome && dosagem) {
                     const { error } = await supabase.from('medicamentos').insert({ 
                         nome, 
@@ -117,7 +100,7 @@ export default function GestaoMedicamentos() {
         alert(`${count} medicamentos importados com sucesso!`);
         setImporting(false);
         buscarMedicamentos();
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Reseta o input
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
       },
       error: (error) => {
         alert('Erro ao ler o arquivo CSV. Verifique a formatação.');
@@ -127,23 +110,17 @@ export default function GestaoMedicamentos() {
       }
     });
   };
-  // =========================================================================
-  // --- FIM DA REFATORAÇÃO ---
-  // =========================================================================
 
-  // 1. Solicitar Exclusão (Abre Modal)
   const requestDelete = (id: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita expandir o card
+    e.stopPropagation(); 
     if (!isAdmin) { return; }
     setMedToDelete(id);
   };
 
-  // 2. Confirmar Exclusão (Executa no Banco)
   const confirmDelete = async () => {
     if (medToDelete === null) return;
-    
     await supabase.from('medicamentos').delete().eq('id', medToDelete);
-    setMedToDelete(null); // Fecha modal
+    setMedToDelete(null); 
     buscarMedicamentos();
   };
 
@@ -158,7 +135,7 @@ export default function GestaoMedicamentos() {
     setExpandedId(expandedId === id ? null : id);
   };
 
-  const filteredMeds = medicamentos.filter(m => m.nome.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredMeds = medicamentos.filter(m => (m.nome || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-orange-50 relative pb-20">
@@ -216,7 +193,7 @@ export default function GestaoMedicamentos() {
             </div>
         </div>
 
-        {/* LISTA DE CARDS (GRID RESPONSIVO) */}
+        {/* LISTA DE CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {loading ? (
                  <div className="col-span-full text-center py-10 text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2"/>Carregando...</div>
@@ -231,7 +208,6 @@ export default function GestaoMedicamentos() {
                             onClick={() => toggleExpand(med.id)}
                             className={`bg-white rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${isExpanded ? 'border-orange-300 shadow-md ring-1 ring-orange-100' : 'border-slate-100 shadow-sm hover:border-orange-200'}`}
                         >
-                            {/* CABEÇALHO DO CARD */}
                             <div className="p-4 flex justify-between items-start gap-3">
                                 <div>
                                     <h3 className="font-bold text-slate-600 text-lg leading-tight">{med.nome}</h3>
@@ -254,7 +230,6 @@ export default function GestaoMedicamentos() {
                                 </div>
                             </div>
 
-                            {/* CONTEÚDO EXPANSÍVEL (DETALHES) */}
                             <div className={`bg-slate-50 border-t border-slate-100 transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
                                 <div className="p-4 space-y-3">
                                     {med.indicacao && (
@@ -311,7 +286,7 @@ export default function GestaoMedicamentos() {
         </div>
       )}
 
-      {/* MODAL DE EXCLUSÃO (ESTILIZADO) */}
+      {/* MODAL DE EXCLUSÃO */}
       {medToDelete !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 border-2 border-red-100 text-center animate-in fade-in zoom-in duration-200">

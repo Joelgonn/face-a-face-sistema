@@ -2,10 +2,25 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
+// IMPORTAÇÃO DA TIPAGEM SEGURA
+import { Database } from '@/types/supabase';
 import { ArrowLeft, FileText, Download, Printer, Loader2, Calendar, User, Pill, ShieldCheck, Clock } from 'lucide-react';
 import Link from 'next/link';
 
-// Interface dos dados "planificados" para o relatório
+// --- TIPAGEM AVANÇADA PARA O JOIN ---
+// 1. Tipos base
+type HistoricoRow = Database['public']['Tables']['historico_administracao']['Row'];
+type PrescricaoRow = Database['public']['Tables']['prescricoes']['Row'];
+type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
+
+// 2. Tipo que reflete a Query complexa do Supabase (Histórico + Prescrição + Encontrista)
+type RelatorioQueryResponse = Pick<HistoricoRow, 'id' | 'data_hora' | 'administrador'> & {
+  prescricao: (Pick<PrescricaoRow, 'nome_medicamento' | 'dosagem'> & {
+    encontrista: Pick<EncontristaRow, 'nome'> | null
+  }) | null
+};
+
+// 3. Tipo visual para a tabela (Flat Data)
 interface RegistroRelatorio {
   id: number;
   data_hora: string;
@@ -23,6 +38,7 @@ export default function RelatorioPage() {
   const supabase = createClient();
 
   const carregarRelatorio = useCallback(async () => {
+    // TypeScript agora entende a estrutura do retorno
     const { data, error } = await supabase
       .from('historico_administracao')
       .select(`
@@ -40,11 +56,14 @@ export default function RelatorioPage() {
     if (error) {
         console.error(error);
     } else if (data) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const formatados = data.map((item: any) => ({
+        // Casting seguro usando o tipo que criamos lá em cima
+        const dadosBrutos = data as unknown as RelatorioQueryResponse[];
+
+        const formatados = dadosBrutos.map((item) => ({
             id: item.id,
-            data_hora: item.data_hora,
-            administrador: item.administrador,
+            // CORREÇÃO: Informando ao TS que data_hora será tratada como string (fallback vazio caso null)
+            data_hora: item.data_hora as string || new Date().toISOString(),
+            administrador: item.administrador || 'Desconhecido',
             medicamento: item.prescricao?.nome_medicamento || 'Excluído',
             dosagem: item.prescricao?.dosagem || '-',
             paciente: item.prescricao?.encontrista?.nome || 'Desconhecido'
@@ -54,39 +73,29 @@ export default function RelatorioPage() {
     setLoading(false);
   }, [supabase]);
 
-  // =========================================================================
-  // --- INÍCIO DA REFATORAÇÃO: VERIFICAÇÃO DE ADMIN NO BANCO DE DADOS ---
-  // =========================================================================
+  // VERIFICAÇÃO DE ADMIN (Via Banco de Dados)
   useEffect(() => {
     const init = async () => {
         const { data: { user } } = await supabase.auth.getUser();
-        
         if (user?.email) {
-            // Consulta a tabela 'admins' do Supabase
             const { data: adminData } = await supabase
                 .from('admins')
                 .select('email')
                 .eq('email', user.email)
                 .single();
 
-            // Se encontrou, a pessoa é admin, então carrega o relatório
             if (adminData) {
                 setIsAdmin(true);
                 carregarRelatorio();
             } else {
-                // Se não é admin, redireciona de volta para o dashboard
                 window.location.href = '/dashboard';
             }
         } else {
-            // Se nem estiver logado, manda pro login/dashboard
             window.location.href = '/dashboard';
         }
     };
     init();
   }, [carregarRelatorio, supabase]);
-  // =========================================================================
-  // --- FIM DA REFATORAÇÃO ---
-  // =========================================================================
 
   const handleExportCSV = () => {
     const headers = ["Data/Hora,Paciente,Medicamento,Dosagem,Aplicado Por"];
@@ -106,8 +115,8 @@ export default function RelatorioPage() {
     window.print();
   };
 
-  if (!isAdmin) return null; // Se não for admin, retorna nada enquanto o redirecionamento acontece
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2"/> Gerando relatório...</div>;
+  if (!isAdmin && !loading) return null;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600"><Loader2 className="animate-spin mr-2 w-8 h-8"/> Gerando relatório...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 print:bg-white print:p-0">
@@ -147,11 +156,10 @@ export default function RelatorioPage() {
             </div>
         )}
 
-        {/* --- VERSÃO MOBILE: CARDS (Visível apenas em telas pequenas e escondido na impressão) --- */}
+        {/* --- VERSÃO MOBILE: CARDS --- */}
         <div className="md:hidden print:hidden space-y-3">
             {registros.map((reg) => (
                 <div key={reg.id} className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col gap-3">
-                    {/* Linha 1: Paciente e Hora */}
                     <div className="flex justify-between items-start">
                         <div className="flex items-center gap-2">
                             <div className="bg-orange-50 p-2 rounded-full text-orange-500">
@@ -174,10 +182,7 @@ export default function RelatorioPage() {
                             </p>
                         </div>
                     </div>
-
                     <div className="border-t border-slate-50"></div>
-
-                    {/* Linha 2: Remédio */}
                     <div className="flex items-center gap-3">
                         <Pill size={16} className="text-blue-400 shrink-0" />
                         <div>
@@ -187,8 +192,6 @@ export default function RelatorioPage() {
                             </span>
                         </div>
                     </div>
-
-                    {/* Linha 3: Administrador */}
                     <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
                         <ShieldCheck size={14} className="text-slate-400"/>
                         <span>Aplicado por: <strong>{reg.administrador}</strong></span>
@@ -197,7 +200,7 @@ export default function RelatorioPage() {
             ))}
         </div>
 
-        {/* --- VERSÃO DESKTOP: TABELA (Visível em telas médias+ e na Impressão) --- */}
+        {/* --- VERSÃO DESKTOP: TABELA --- */}
         <div className="hidden md:block print:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-0">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">

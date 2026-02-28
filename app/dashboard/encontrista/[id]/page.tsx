@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/app/utils/supabase/client';
+import { Database } from '@/types/supabase';
 import { 
   ArrowLeft, User, AlertTriangle, Shield, Pill, History, UserCheck, 
   Plus, X, Trash2, Clock, CheckCircle2, Pencil, Loader2, 
@@ -10,38 +11,16 @@ import {
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-// --- Interfaces ---
-interface Encontrista {
-  id: number;
-  nome: string;
-  alergias: string | null;
-  responsavel: string | null;
-  observacoes: string | null;
-  check_in: boolean;
-}
+type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
+type PrescricaoRow = Database['public']['Tables']['prescricoes']['Row'];
+type HistoricoRow = Database['public']['Tables']['historico_administracao']['Row'];
+type MedicamentoBaseRow = Database['public']['Tables']['medicamentos']['Row'];
 
-interface Prescricao {
-  id: number;
-  nome_medicamento: string;
-  dosagem: string;
-  posologia: string;
-  horario_inicial: string;
-}
+type HistoricoItem = HistoricoRow & {
+  prescricao: Pick<PrescricaoRow, 'nome_medicamento' | 'dosagem'> | null
+};
 
-interface HistoricoItem {
-  id: number;
-  prescricao_id: number;
-  data_hora: string;
-  administrador: string;
-  prescricao: { nome_medicamento: string, dosagem: string };
-}
-
-interface BaseMedicamento {
-    id: number;
-    nome: string;
-}
-
-// --- DICIONÁRIO DE RISCO CRUZADO (Segurança Clínica) ---
+// --- CONSTANTES MANTIDAS IGUAIS ---
 const FAMILIAS_DE_RISCO: Record<string, string[]> = {
   'penicilina': ['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina', 'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem', 'ertapenem', 'aztreonam'],
   'aines': ['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib', 'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
@@ -93,8 +72,8 @@ const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
   'codein': 'codeína', 'dimorf': 'morfina'
 };
 
-// --- Funções Auxiliares ---
-const formatarHora = (isoString: string) => {
+const formatarHora = (isoString: string | null) => {
+  if (!isoString) return { hora: '--:--', data: '--/--' };
   const data = new Date(isoString);
   return {
     hora: data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
@@ -102,7 +81,7 @@ const formatarHora = (isoString: string) => {
   };
 };
 
-const formatarNomeEnfermeiro = (email: string) => {
+const formatarNomeEnfermeiro = (email: string | null) => {
     if (!email) return 'Desconhecido';
     const parteNome = email.split('@')[0]; 
     const nomeLimpo = parteNome.replace(/[0-9]/g, '').replace(/[._]/g, ' ');
@@ -114,13 +93,12 @@ const normalizarTexto = (texto: string) => {
 };
 
 export default function DetalhesEncontrista() {
-  const [pessoa, setPessoa] = useState<Encontrista | null>(null);
-  const [medicacoes, setMedicacoes] = useState<Prescricao[]>([]);
+  const [pessoa, setPessoa] = useState<EncontristaRow | null>(null);
+  const [medicacoes, setMedicacoes] = useState<PrescricaoRow[]>([]);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [infoExpanded, setInfoExpanded] = useState(false);
 
-  // Modais e Estados
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [medNome, setMedNome] = useState('');
@@ -129,19 +107,15 @@ export default function DetalhesEncontrista() {
   const [medHorario, setMedHorario] = useState('');
 
   const [isAdministerModalOpen, setIsAdministerModalOpen] = useState(false);
-  const [selectedPrescricao, setSelectedPrescricao] = useState<Prescricao | null>(null);
+  const [selectedPrescricao, setSelectedPrescricao] = useState<PrescricaoRow | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
-  // Controle de Exclusão de Medicação (Remédio inteiro)
   const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
-
-  // Controle de Exclusão de Histórico (Registro único)
   const [historyToDelete, setHistoryToDelete] = useState<number | null>(null);
-
   const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
 
-  const [baseMedicamentos, setBaseMedicamentos] = useState<BaseMedicamento[]>([]);
-  const [sugestoes, setSugestoes] = useState<BaseMedicamento[]>([]);
+  const [baseMedicamentos, setBaseMedicamentos] = useState<MedicamentoBaseRow[]>([]);
+  const [sugestoes, setSugestoes] = useState<MedicamentoBaseRow[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -153,8 +127,6 @@ export default function DetalhesEncontrista() {
 
   const params = useParams();
   const supabase = createClient();
-
-  // --- Handlers ---
 
   const handleHorarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/\D/g, ''); 
@@ -185,44 +157,33 @@ export default function DetalhesEncontrista() {
     }
   };
 
-  // --- CORREÇÃO AQUI ---
   const verificarConflitoAlergia = (nomeRemedio: string) => {
     if (!pessoa?.alergias) return null; 
 
-    // Normaliza o remédio (tira acentos)
     let remedioNormalizado = normalizarTexto(nomeRemedio);
     if (SINONIMOS_MEDICAMENTOS[remedioNormalizado]) {
         remedioNormalizado = SINONIMOS_MEDICAMENTOS[remedioNormalizado];
     }
 
-    // Normaliza as alergias do paciente
     const listaAlergias = pessoa.alergias.split(/[,;]|\be\b/).map(s => normalizarTexto(s)).filter(s => s.length > 2);
 
     for (const alergia of listaAlergias) {
-        // Verifica correspondência direta
         if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
             return `Possível alergia direta a: ${alergia.toUpperCase()}`;
         }
 
-        // Verifica famílias
         for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
             const nomeFamilia = normalizarTexto(familia);
-            
-            // IMPORTANTE: Normalizar os membros da família para remover acentos antes de comparar
-            // Isso garante que 'codeína' (lista) bata com 'codeina' (input)
             const membrosNormalizados = membros.map(m => normalizarTexto(m));
 
-            // Cenário 1: Alergia é a Família
             if (alergia === nomeFamilia && membrosNormalizados.some(m => remedioNormalizado.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} (Família)`;
             }
 
-            // Cenário 2: Remédio é a Família
             if (remedioNormalizado === nomeFamilia && membrosNormalizados.some(m => alergia.includes(m))) {
                 return `Risco de Grupo: ${alergia.toUpperCase()} pertence à família ${familia.toUpperCase()}`;
             }
 
-            // Cenário 3: Irmãos (Cruzada)
             const alergiaEstaNaLista = membrosNormalizados.some(m => alergia.includes(m) || m.includes(alergia));
             const remedioEstaNaLista = membrosNormalizados.some(m => remedioNormalizado.includes(m));
 
@@ -233,18 +194,24 @@ export default function DetalhesEncontrista() {
     }
     return null;
   };
-  // ---------------------
 
-  const calcularStatus = (med: Prescricao) => {
+  const calcularStatus = (med: PrescricaoRow) => {
     const ultimoRegistro = historico.find(h => h.prescricao_id === med.id);
-    if (!ultimoRegistro) {
+    
+    if (!med.horario_inicial || !med.posologia) {
+         return { texto: `Dados incompletos`, cor: "text-gray-500", bg: "bg-gray-50 border-gray-100" };
+    }
+
+    if (!ultimoRegistro || !ultimoRegistro.data_hora) {
       return { texto: `Início: ${med.horario_inicial}`, cor: "text-slate-500", bg: "bg-slate-50 border-slate-100" };
     }
+
     const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
     if (!match) {
       return { texto: "Posologia complexa", cor: "text-blue-600", bg: "bg-blue-50 border-blue-100" };
     }
     const intervaloHoras = parseInt(match[1]);
+    
     const dataUltima = new Date(ultimoRegistro.data_hora);
     const dataProxima = new Date(dataUltima.getTime() + intervaloHoras * 60 * 60 * 1000);
     const agora = new Date();
@@ -264,11 +231,20 @@ export default function DetalhesEncontrista() {
   };
 
   const carregarDados = useCallback(async () => {
-    if (!params.id) return;
-    const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', params.id).single();
+    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
+    const rawId = params.id;
+    const idString = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!idString) return;
+    const idNumber = parseInt(idString);
+    if (isNaN(idNumber)) return;
+    // ------------------------------------------
+
+    const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', idNumber).single();
     if (pessoaData) setPessoa(pessoaData);
-    const { data: medData } = await supabase.from('prescricoes').select('*').eq('encontrista_id', params.id);
+    
+    const { data: medData } = await supabase.from('prescricoes').select('*').eq('encontrista_id', idNumber);
     setMedicacoes(medData || []);
+    
     if (medData && medData.length > 0) {
         const idsPrescricoes = medData.map(m => m.id);
         const { data: histData } = await supabase
@@ -276,10 +252,11 @@ export default function DetalhesEncontrista() {
             .select(`*, prescricao:prescricoes (nome_medicamento, dosagem)`)
             .in('prescricao_id', idsPrescricoes)
             .order('data_hora', { ascending: false });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setHistorico((histData as any) || []);
+            
+        setHistorico((histData as unknown as HistoricoItem[]) || []);
     } else { setHistorico([]); }
-    const { data: baseMeds } = await supabase.from('medicamentos').select('id, nome').order('nome');
+    
+    const { data: baseMeds } = await supabase.from('medicamentos').select('*').order('nome');
     setBaseMedicamentos(baseMeds || []);
     setLoading(false);
   }, [params.id, supabase]);
@@ -300,7 +277,7 @@ export default function DetalhesEncontrista() {
     const valor = e.target.value;
     setMedNome(valor);
     if (valor.length > 0) {
-        const filtrados = baseMedicamentos.filter(m => m.nome.toLowerCase().includes(valor.toLowerCase()));
+        const filtrados = baseMedicamentos.filter(m => (m.nome || '').toLowerCase().includes(valor.toLowerCase()));
         setSugestoes(filtrados);
         setMostrarSugestoes(true);
     } else { setMostrarSugestoes(false); }
@@ -313,15 +290,36 @@ export default function DetalhesEncontrista() {
 
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
+    const rawId = params.id;
+    const idString = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!idString) return;
+    const idNumber = parseInt(idString);
+    // ------------------------------------------
+
     setSaving(true);
-    const { error } = await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', params.id);
+    const { error } = await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', idNumber);
     if (!error) { setIsEditModalOpen(false); carregarDados(); }
     setSaving(false);
   };
 
   const executeSalvarMedicacao = async () => {
+    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
+    const rawId = params.id;
+    const idString = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!idString) return;
+    const idNumber = parseInt(idString);
+    // ------------------------------------------
+
     setSaving(true);
-    const { error } = await supabase.from('prescricoes').insert({ encontrista_id: params.id, nome_medicamento: medNome, dosagem: medDosagem, posologia: medPosologia, horario_inicial: medHorario });
+    const { error } = await supabase.from('prescricoes').insert({ 
+        encontrista_id: idNumber, 
+        nome_medicamento: medNome, 
+        dosagem: medDosagem, 
+        posologia: medPosologia, 
+        horario_inicial: medHorario 
+    });
     if (!error) { setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario(''); setIsModalOpen(false); setAllergyWarning(null); carregarDados(); }
     setSaving(false);
   };
@@ -347,19 +345,15 @@ export default function DetalhesEncontrista() {
     setMedicationToDelete(id);
   };
 
-  // Exclui medicação e TUDO que tem nela (2 etapas)
   const confirmDeleteMedication = async () => {
     if (!medicationToDelete) return;
-    // 1. Limpa o histórico
     const { error: errorHistory } = await supabase.from('historico_administracao').delete().eq('prescricao_id', medicationToDelete);
     if (errorHistory) { alert("Erro ao limpar histórico: " + errorHistory.message); return; }
-    // 2. Limpa a prescrição
     const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
     if (!error) { setMedicationToDelete(null); carregarDados(); } 
     else { alert("Erro ao excluir medicamento: " + error.message); }
   };
 
-  // Exclui um único registro de histórico
   const confirmDeleteHistory = async () => {
     if (!historyToDelete) return;
     const { error } = await supabase.from('historico_administracao').delete().eq('id', historyToDelete);
@@ -367,7 +361,7 @@ export default function DetalhesEncontrista() {
     else { alert("Erro ao excluir registro: " + error.message); }
   };
 
-  const executeAbrirConfirmacao = (prescricao: Prescricao) => {
+  const executeAbrirConfirmacao = (prescricao: PrescricaoRow) => {
     setSelectedPrescricao(prescricao);
     setAllergyWarning(null); 
     const jaFoiAdministrado = historico.some(h => h.prescricao_id === prescricao.id);
@@ -376,7 +370,9 @@ export default function DetalhesEncontrista() {
     setIsAdministerModalOpen(true);
   };
 
-  const handleAdministrarClick = (prescricao: Prescricao) => {
+  const handleAdministrarClick = (prescricao: PrescricaoRow) => {
+    if (!prescricao.nome_medicamento) return;
+
     const conflito = verificarConflitoAlergia(prescricao.nome_medicamento);
     if (conflito) {
         setAllergyWarning({
@@ -397,7 +393,12 @@ export default function DetalhesEncontrista() {
     dataHoje.setHours(horas); dataHoje.setMinutes(minutos); dataHoje.setSeconds(0);
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('historico_administracao').insert({ prescricao_id: selectedPrescricao.id, data_hora: dataHoje.toISOString(), administrador: user?.email || "Desconhecido" });
+    
+    await supabase.from('historico_administracao').insert({ 
+        prescricao_id: selectedPrescricao.id, 
+        data_hora: dataHoje.toISOString(), 
+        administrador: user?.email || "Desconhecido" 
+    });
     setSaving(false); setIsAdministerModalOpen(false); carregarDados();
   };
 
@@ -434,7 +435,7 @@ export default function DetalhesEncontrista() {
                 </div>
                 <div className="flex gap-2 mt-2 sm:mt-0">
                     <button onClick={() => {
-                        setEditNome(pessoa.nome); setEditResponsavel(pessoa.responsavel || '');
+                        setEditNome(pessoa.nome || ''); setEditResponsavel(pessoa.responsavel || '');
                         setEditAlergias(pessoa.alergias || ''); setEditObservacoes(pessoa.observacoes || '');
                         setIsEditModalOpen(true);
                     }} className="px-4 py-2 bg-slate-100 hover:bg-orange-200 text-orange-600 rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
@@ -513,9 +514,7 @@ export default function DetalhesEncontrista() {
                 {medicacoes.map(med => {
                     const status = calcularStatus(med);
                     
-                    // --- VERIFICAÇÃO VISUAL DE ALERGIA NA LISTA ---
-                    const conflito = verificarConflitoAlergia(med.nome_medicamento);
-                    // ----------------------------------------------
+                    const conflito = verificarConflitoAlergia(med.nome_medicamento || '');
 
                     return (
                         <div key={med.id} className={`p-5 rounded-3xl shadow-sm border transition-all ${conflito ? 'bg-red-50 border-red-200 ring-2 ring-red-100' : 'bg-white ' + status.bg}`}>
@@ -622,6 +621,7 @@ export default function DetalhesEncontrista() {
       </div>
 
       {/* --- MODAIS --- */}
+      {/* (Mantive todos os modais iguais) */}
       
       {/* MODAL ALERTA DE ALERGIA */}
       {allergyWarning && (
@@ -741,7 +741,7 @@ export default function DetalhesEncontrista() {
                   {mostrarSugestoes && sugestoes.length > 0 && (
                     <ul className="absolute z-50 w-full bg-white border border-slate-100 rounded-xl mt-2 max-h-48 overflow-y-auto shadow-xl py-1">
                         {sugestoes.map(sugestao => (
-                            <li key={sugestao.id} onClick={() => selecionarMedicamento(sugestao.nome)} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer text-slate-700 text-sm border-b border-slate-50 last:border-none transition-colors">{sugestao.nome}</li>
+                            <li key={sugestao.id} onClick={() => selecionarMedicamento(sugestao.nome || '')} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer text-slate-700 text-sm border-b border-slate-50 last:border-none transition-colors">{sugestao.nome}</li>
                         ))}
                     </ul>
                   )}
