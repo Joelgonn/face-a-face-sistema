@@ -231,13 +231,11 @@ export default function DetalhesEncontrista() {
   };
 
   const carregarDados = useCallback(async () => {
-    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
     const rawId = params.id;
     const idString = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!idString) return;
     const idNumber = parseInt(idString);
     if (isNaN(idNumber)) return;
-    // ------------------------------------------
 
     const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', idNumber).single();
     if (pessoaData) setPessoa(pessoaData);
@@ -290,13 +288,10 @@ export default function DetalhesEncontrista() {
 
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
     const rawId = params.id;
     const idString = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!idString) return;
     const idNumber = parseInt(idString);
-    // ------------------------------------------
 
     setSaving(true);
     const { error } = await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', idNumber);
@@ -305,12 +300,10 @@ export default function DetalhesEncontrista() {
   };
 
   const executeSalvarMedicacao = async () => {
-    // --- CORREÇÃO: TRATAMENTO DO PARAMS.ID ---
     const rawId = params.id;
     const idString = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!idString) return;
     const idNumber = parseInt(idString);
-    // ------------------------------------------
 
     setSaving(true);
     const { error } = await supabase.from('prescricoes').insert({ 
@@ -420,14 +413,24 @@ export default function DetalhesEncontrista() {
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         
-        {/* --- CARD DE PERFIL --- */}
+        {/* --- CARD DE PERFIL COM O ID PULSANTE --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 relative overflow-hidden">
+           
+           {/* BADGE DE ID PULSANTE (NOVO) */}
+           <div className="absolute top-4 right-4 sm:top-6 sm:right-6 flex flex-col items-end z-10">
+               <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-0.5 mr-1">ID</span>
+               <div className="bg-gradient-to-tr from-orange-500 to-orange-400 text-white font-black text-xl sm:text-2xl px-3 py-1 sm:px-4 sm:py-1.5 rounded-xl sm:rounded-2xl animate-pulse shadow-lg shadow-orange-300/50 border-2 border-white">
+                   #{pessoa.id}
+               </div>
+           </div>
+
            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-white shadow-orange-200 shadow-lg shrink-0">
                     <User size={32} />
                 </div>
-                <div className="flex-1">
-                    <h1 className="text-2xl font-bold text-slate-800 leading-tight">{pessoa.nome}</h1>
+                {/* O pr-20 garante que o texto não sobreponha a badge do ID no mobile */}
+                <div className="flex-1 pr-20 sm:pr-24">
+                    <h1 className="text-2xl font-bold text-slate-800 leading-tight break-words">{pessoa.nome}</h1>
                     <div className="flex items-center gap-2 mt-1 text-slate-500 text-sm">
                         <Shield size={14} />
                         <span>Responsável: {pessoa.responsavel || ''}</span>
@@ -621,7 +624,6 @@ export default function DetalhesEncontrista() {
       </div>
 
       {/* --- MODAIS --- */}
-      {/* (Mantive todos os modais iguais) */}
       
       {/* MODAL ALERTA DE ALERGIA */}
       {allergyWarning && (
