@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, useTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/app/utils/supabase/client';
 import { zerarSistemaCompleto } from '@/app/actions/system';
@@ -88,6 +88,12 @@ interface OfflineQueueItem {
   status?: boolean;
 }
 
+// --- TIPAGEM CORRETA DO EVENTO PWA ---
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export default function DashboardClient({ 
   initialEncontristas, 
   isAdminInitial 
@@ -144,11 +150,11 @@ export default function DashboardClient({
   const [fabOpen, setFabOpen] = useState(false);
 
   // --- CONTROLE DE INSTALAÇÃO DO PWA ---
-  const [deferredPrompt, setDeferredPrompt] = useState<{
-    prompt: () => void;
-    userChoice: Promise<{ outcome: string }>;
-  } | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
+
+  // --- TRANSITION PARA EVITAR TRAVAR UI ---
+  const [isPending, startTransition] = useTransition();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -178,36 +184,41 @@ export default function DashboardClient({
 
   // --- CONTROLE DE INSTALAÇÃO DO PWA ---
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      // Type assertion para o evento correto
-      const promptEvent = e as unknown as {
-        prompt: () => void;
-        userChoice: Promise<{ outcome: string }>;
-      };
-      setDeferredPrompt(promptEvent);
+    const handler = (e: Event) => {
+      const evt = e as BeforeInstallPromptEvent;
+      
+      evt.preventDefault();
+      setDeferredPrompt(evt);
       setShowInstallButton(true);
+      
       console.log('[PWA] beforeinstallprompt capturado');
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('beforeinstallprompt', handler);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('beforeinstallprompt', handler);
     };
   }, []);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
+
+    await deferredPrompt.prompt();
     
-    deferredPrompt.prompt();
-    
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`[PWA] Usuário ${outcome === 'accepted' ? 'instalou' : 'recusou'} o app`);
-    
+    const choice = await deferredPrompt.userChoice;
+    console.log('[PWA] escolha:', choice.outcome);
+
     setDeferredPrompt(null);
     setShowInstallButton(false);
   };
+
+  // --- TOGGLE MODO SIMPLES COM TRANSITION (EVITA TRAVAR UI) ---
+  const toggleModoSimples = useCallback(() => {
+    startTransition(() => {
+      setModoSimples(prev => !prev);
+    });
+  }, []);
 
   // --- BUSCAR ENCONTRISTAS COM SAFE QUERY ---
   const buscarEncontristas = useCallback(async () => {
@@ -227,7 +238,7 @@ export default function DashboardClient({
     setLoading(false);
   }, [supabase]);
 
-  // --- FUNÇÃO DE SINCRONIZAÇÃO INTELIGENTE (ITEM POR ITEM) ---
+  // --- FUNÇÃO DE SINCRONIZAÇÃO INTELIGENTE ---
   const syncOfflineData = useCallback(async () => {
     const queue = getQueue() as OfflineQueueItem[]
     if (queue.length === 0) {
@@ -339,7 +350,8 @@ export default function DashboardClient({
     window.location.reload()
   }
 
-  const getStatusPessoa = (pessoa: EncontristaDashboard) => {
+  // --- FUNÇÃO OTIMIZADA DE STATUS (MEMOIZADA POR PESSOA) ---
+  const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
     if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
       return { 
         cor: 'bg-slate-100 text-slate-700 border-slate-200', 
@@ -379,7 +391,43 @@ export default function DashboardClient({
     if (statusGeral === 1) return { cor: 'bg-rose-100 text-rose-800 border-rose-200', bordaL: 'border-l-rose-500', texto: 'Atrasado', prioridade: 3, icone: <AlertTriangle size={12}/> };
     if (statusGeral === 2) return { cor: 'bg-amber-100 text-amber-800 border-amber-200', bordaL: 'border-l-amber-500', texto: 'Atenção', prioridade: 2, icone: <Clock size={12}/> };
     return { cor: 'bg-emerald-100 text-emerald-800 border-emerald-200', bordaL: 'border-l-emerald-500', texto: 'Em Dia', prioridade: 1, icone: <CheckCircle2 size={12}/> };
-  };
+  }, []);
+
+  // --- FILTRO MEMOIZADO ---
+  const filtered = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    return encontristas.filter(p => {
+      const nome = p.nome || '';
+      const responsavel = p.responsavel || '';
+      return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || (term && p.id === Number(term));
+    });
+  }, [encontristas, searchTerm]);
+
+  // --- MAPA DE STATUS MEMOIZADO (CACHE POR PESSOA) ---
+  const statusMap = useMemo(() => {
+    const map = new Map();
+    for (const pessoa of filtered) {
+      map.set(pessoa.id, getStatusPessoa(pessoa));
+    }
+    return map;
+  }, [filtered, getStatusPessoa]);
+
+  // --- SORTED MEMOIZADO COM USO DO MAPA DE STATUS ---
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const statusA = statusMap.get(a.id);
+      const statusB = statusMap.get(b.id);
+      return (statusB?.prioridade || 0) - (statusA?.prioridade || 0);
+    });
+  }, [filtered, statusMap]);
+
+  const getConnectionStatus = () => {
+    if (!isOnline) return { text: '🔴 Offline', bg: 'bg-rose-100 text-rose-700' }
+    if (queueCount > 0) return { text: '🟡 Pendente', bg: 'bg-amber-100 text-amber-700' }
+    return { text: '🟢 Online', bg: 'bg-emerald-100 text-emerald-700' }
+  }
+
+  const connectionStatus = getConnectionStatus()
 
   const requestCheckIn = (id: number, currentStatus: boolean | null, nome: string) => {
     setCheckInTarget({ id, status: currentStatus || false, nome });
@@ -520,7 +568,7 @@ export default function DashboardClient({
     event.target.value = '';
   };
 
-  // --- IMPORTAÇÃO CSV CORRIGIDA (TUDO OU NADA COM SAFE QUERY) ---
+  // --- IMPORTAÇÃO CSV ---
   const processFileImport = () => {
     if (!fileToImport) return;
     setImporting(true);
@@ -581,23 +629,6 @@ export default function DashboardClient({
     });
   };
 
-  const filtered = encontristas.filter(p => {
-    const term = searchTerm.toLowerCase().trim();
-    const nome = p.nome || '';
-    const responsavel = p.responsavel || '';
-    return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || (term && p.id === Number(term));
-  });
-
-  const sorted = [...filtered].sort((a, b) => getStatusPessoa(b).prioridade - getStatusPessoa(a).prioridade);
-
-  const getConnectionStatus = () => {
-    if (!isOnline) return { text: '🔴 Offline', bg: 'bg-rose-100 text-rose-700' }
-    if (queueCount > 0) return { text: '🟡 Pendente', bg: 'bg-amber-100 text-amber-700' }
-    return { text: '🟢 Online', bg: 'bg-emerald-100 text-emerald-700' }
-  }
-
-  const connectionStatus = getConnectionStatus()
-
   const handleSwipeCheckIn = async (id: number, currentStatus: boolean | null, nome: string) => {
     requestCheckIn(id, currentStatus, nome)
     setTimeout(() => {
@@ -628,9 +659,11 @@ export default function DashboardClient({
               </button>
             )}
 
+            {/* BOTÃO TOGGLE MODO SIMPLES COM TRANSITION */}
             <button 
-              onClick={() => setModoSimples(prev => !prev)}
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors"
+              onClick={toggleModoSimples}
+              disabled={isPending}
+              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
             >
               {modoSimples ? '📱 Simples' : '🖥️ Completo'}
             </button>
@@ -791,9 +824,10 @@ export default function DashboardClient({
           )}
         </div>
 
+        {/* LISTA MOBILE COM STATUS DO MAPA CACHEADO */}
         <div className="md:hidden space-y-4">
           {loading ? <div className="text-center py-12 text-slate-400"><Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-12 text-slate-400 font-bold">Nenhum paciente encontrado.</div> : sorted.map((pessoa) => {
-             const status = getStatusPessoa(pessoa);
+             const status = statusMap.get(pessoa.id);
              return (
               <motion.div
                 key={pessoa.id}
@@ -812,7 +846,7 @@ export default function DashboardClient({
                 </div>
                 
                 <div className={`
-                  bg-white rounded-[2rem] border-l-8 ${status.bordaL}
+                  bg-white rounded-[2rem] border-l-8 ${status?.bordaL || 'border-l-slate-300'}
                   shadow-md border-y border-r border-slate-100 overflow-hidden
                   transition-all duration-300
                   ${flashId === pessoa.id ? 'bg-emerald-100 scale-[1.02]' : ''}
@@ -828,8 +862,8 @@ export default function DashboardClient({
                                       {pessoa.nome}
                                   </Link>
                                   <div className="flex items-center gap-2 flex-wrap">
-                                      <span className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-black uppercase tracking-wide ${status.cor}`}>
-                                          {status.icone} {status.texto}
+                                      <span className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-black uppercase tracking-wide ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
+                                          {status?.icone} {status?.texto}
                                       </span>
                                   </div>
                                   {pessoa.responsavel && <p className="text-xs text-slate-500 font-medium mt-2 truncate">Resp: {pessoa.responsavel}</p>}
@@ -856,6 +890,7 @@ export default function DashboardClient({
           })}
         </div>
 
+        {/* LISTA DESKTOP COM STATUS DO MAPA CACHEADO */}
         {!modoSimples && (
           <div className="hidden md:block space-y-3">
               
@@ -879,13 +914,13 @@ export default function DashboardClient({
               ) : (
                   <div className="space-y-3">
                       {sorted.map((pessoa) => {
-                          const status = getStatusPessoa(pessoa);
+                          const status = statusMap.get(pessoa.id);
                           return (
-                              <div key={pessoa.id} className={`group grid grid-cols-12 gap-4 items-center bg-white hover:bg-orange-50/40 rounded-3xl border-l-8 ${status.bordaL} border-y border-r border-slate-100 shadow-sm hover:shadow-xl hover:shadow-orange-500/15 hover:scale-[1.01] transition-all duration-300 p-4 px-6`}>
+                              <div key={pessoa.id} className={`group grid grid-cols-12 gap-4 items-center bg-white hover:bg-orange-50/40 rounded-3xl border-l-8 ${status?.bordaL || 'border-l-slate-300'} border-y border-r border-slate-100 shadow-sm hover:shadow-xl hover:shadow-orange-500/15 hover:scale-[1.01] transition-all duration-300 p-4 px-6`}>
                                   
                                   <div className="col-span-2">
-                                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-colors ${status.cor}`}>
-                                          {status.icone} {status.texto}
+                                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-colors ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
+                                          {status?.icone} {status?.texto}
                                       </span>
                                   </div>
 
@@ -929,6 +964,7 @@ export default function DashboardClient({
 
       </main>
 
+      {/* FAB EXPANDIDO */}
       <div className="fixed bottom-6 right-6 z-50 md:hidden">
         
         <AnimatePresence>
@@ -990,6 +1026,7 @@ export default function DashboardClient({
 
       </div>
 
+      {/* MODAIS (mantidos) */}
       {showQueue && !modoSimples && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
