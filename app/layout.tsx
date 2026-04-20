@@ -44,8 +44,8 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <meta charSet="utf-8" />
-        
-        {/* MANIFEST MANUAL - GARANTE QUE O PWA SEJA DETECTADO */}
+
+        {/* 🔥 ESSA LINHA RESOLVE TUDO - MANIFEST MANUAL */}
         <link rel="manifest" href="/manifest.json" />
 
         <meta name="apple-mobile-web-app-capable" content="yes" />
