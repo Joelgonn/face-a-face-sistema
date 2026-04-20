@@ -143,6 +143,13 @@ export default function DashboardClient({
   // --- FAB EXPANDIDO ---
   const [fabOpen, setFabOpen] = useState(false);
 
+  // --- CONTROLE DE INSTALAÇÃO DO PWA ---
+  const [deferredPrompt, setDeferredPrompt] = useState<{
+    prompt: () => void;
+    userChoice: Promise<{ outcome: string }>;
+  } | null>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -168,6 +175,39 @@ export default function DashboardClient({
       inputRef.current.focus()
     }
   }, [modoSimples])
+
+  // --- CONTROLE DE INSTALAÇÃO DO PWA ---
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      // Type assertion para o evento correto
+      const promptEvent = e as unknown as {
+        prompt: () => void;
+        userChoice: Promise<{ outcome: string }>;
+      };
+      setDeferredPrompt(promptEvent);
+      setShowInstallButton(true);
+      console.log('[PWA] beforeinstallprompt capturado');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`[PWA] Usuário ${outcome === 'accepted' ? 'instalou' : 'recusou'} o app`);
+    
+    setDeferredPrompt(null);
+    setShowInstallButton(false);
+  };
 
   // --- BUSCAR ENCONTRISTAS COM SAFE QUERY ---
   const buscarEncontristas = useCallback(async () => {
@@ -578,6 +618,16 @@ export default function DashboardClient({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* BOTÃO DE INSTALAÇÃO DO PWA */}
+            {showInstallButton && modoSimples && (
+              <button
+                onClick={handleInstallClick}
+                className="px-3 py-2 rounded-xl bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-colors flex items-center gap-1"
+              >
+                📱 Instalar App
+              </button>
+            )}
+
             <button 
               onClick={() => setModoSimples(prev => !prev)}
               className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors"

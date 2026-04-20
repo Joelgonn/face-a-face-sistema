@@ -2,7 +2,7 @@
   "name": "Face a Face - Igreja Batista Apascentar",
   "short_name": "Face a Face",
   "description": "Sistema de controle de medicação e check-in para eventos",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#F8FAFC",
   "theme_color": "#ea580c",
