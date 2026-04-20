@@ -1,25 +1,55 @@
-const CACHE_NAME = 'face-to-face-v2' // ATUALIZEI A VERSÃO
+const STATIC_CACHE = 'face-static-v1'
+const DYNAMIC_CACHE = 'face-dynamic-v1'
 const OFFLINE_URL = '/offline.html'
+const OFFLINE_IMAGE = '/offline-image.png'
+const MAX_CACHE_ITEMS = 50
+const NETWORK_TIMEOUT = 3000
 
-// 🔥 REMOVIDO '/dashboard' da lista de precache
+// Arquivos estáticos (precache)
 const PRECACHE_URLS = [
   '/',
   '/offline.html',
-  '/manifest.json',
+  '/offline-image.png',
   '/favicon.ico'
 ]
 
-// --- INSTALAÇÃO ---
+// --- FUNÇÃO PARA VERIFICAR SE É HTML VÁLIDO ---
+function isValidHtmlResponse(response) {
+  if (!response || !response.ok) return false
+  const contentType = response.headers.get('content-type')
+  return contentType?.includes('text/html') ?? false
+}
+
+// --- FUNÇÃO PARA LIMITAR TAMANHO DO CACHE ---
+async function limitCache(cacheName) {
+  const cache = await caches.open(cacheName)
+  const keys = await cache.keys()
+
+  while (keys.length > MAX_CACHE_ITEMS) {
+    await cache.delete(keys[0])
+    keys.shift()
+  }
+}
+
+// --- INSTALAÇÃO COM TRATAMENTO DE ERRO INDIVIDUAL ---
 self.addEventListener('install', (event) => {
   console.log('[SW] Instalando...')
   
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Cacheando arquivos essenciais')
-        return cache.addAll(PRECACHE_URLS)
-      })
-      .then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(STATIC_CACHE)
+      
+      await Promise.all(
+        PRECACHE_URLS.map(url =>
+          cache.add(url).catch(err => 
+            console.warn('[SW] Falha ao cachear:', url, err)
+          )
+        )
+      )
+      
+      console.log('[SW] Cache estático concluído')
+      await self.skipWaiting()
+    })()
   )
 })
 
@@ -28,81 +58,137 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Ativando...')
   
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
+    (async () => {
+      const cacheNames = await caches.keys()
+      await Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
             console.log('[SW] Removendo cache antigo:', cacheName)
             return caches.delete(cacheName)
           }
         })
       )
-    }).then(() => self.clients.claim())
+      await self.clients.claim()
+    })()
   )
 })
 
-// --- ESTRATÉGIA DE FETCH (Network First para navegação) ---
+// --- FETCH COM ABORTCONTROLLER E FALLBACK ROBUSTO ---
 self.addEventListener('fetch', (event) => {
-  // Ignora requisições não-GET
+  // Só processa requisições da própria origem
+  if (!event.request.url.startsWith(self.location.origin)) return
+  
   if (event.request.method !== 'GET') return
   
-  // Ignora requisições para o Supabase
+  // Ignora requisições do Supabase e analytics
   if (event.request.url.includes('/supabase')) return
-  
-  // Ignora requisições de analytics
   if (event.request.url.includes('google-analytics')) return
   
-  // Para navegação (HTML), usa Network First com fallback offline
-  if (event.request.mode === 'navigate') {
+  // 🔥 Arquivos estáticos do Next.js (cache first com cache dinâmico)
+  if (event.request.url.includes('/_next/static/')) {
     event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          // Cache da resposta (só se for bem-sucedida)
-          if (response && response.status === 200) {
-            const responseClone = response.clone()
-            caches.open(CACHE_NAME).then(cache => {
-              cache.put(event.request, responseClone)
-            })
-          }
-          return response
+      caches.match(event.request)
+        .then(cachedResponse => {
+          if (cachedResponse) return cachedResponse
+          
+          return fetch(event.request).then(response => {
+            if (response && response.ok) {
+              const clone = response.clone()
+              caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone))
+            }
+            return response
+          })
         })
-        .catch(() => {
-          // Fallback para cache ou página offline
-          return caches.match(event.request)
-            .then(cachedResponse => {
-              if (cachedResponse) {
-                return cachedResponse
+    )
+    return
+  }
+  
+  // 🔥 Imagens (Cache First)
+  if (event.request.url.match(/\.(jpg|jpeg|png|gif|svg|webp)$/)) {
+    event.respondWith(
+      caches.match(event.request)
+        .then(cachedResponse => {
+          if (cachedResponse) return cachedResponse
+          
+          return fetch(event.request)
+            .then(response => {
+              if (response && response.ok) {
+                const responseClone = response.clone()
+                caches.open(DYNAMIC_CACHE).then(async cache => {
+                  await cache.put(event.request, responseClone)
+                  await limitCache(DYNAMIC_CACHE)
+                })
               }
-              return caches.match(OFFLINE_URL)
+              return response
+            })
+            .catch(() => {
+              return caches.match(OFFLINE_IMAGE)
             })
         })
     )
     return
   }
   
-  // Para outros recursos (CSS, JS, imagens), Cache First com fallback para rede
-  event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        if (cachedResponse) {
-          return cachedResponse
+  // 🔥 Detecção de navegação mais precisa
+  const isNavigation = event.request.mode === 'navigate' ||
+    (event.request.headers.get('accept')?.includes('text/html') ?? false)
+  
+  if (isNavigation) {
+    event.respondWith(
+      (async () => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), NETWORK_TIMEOUT)
+        
+        try {
+          const response = await fetch(event.request, { signal: controller.signal })
+          clearTimeout(timeoutId)
+          
+          // 🔥 Só cacheia HTML se for uma resposta válida (não cacheia erro 200 com conteúdo errado)
+          if (response && response.ok && isValidHtmlResponse(response)) {
+            const responseClone = response.clone()
+            const cache = await caches.open(DYNAMIC_CACHE)
+            await cache.put(event.request, responseClone)
+            await limitCache(DYNAMIC_CACHE)
+          }
+          return response
+        } catch (error) {
+          clearTimeout(timeoutId)
+          console.log('[SW] Falha na rede, buscando cache:', error)
+          
+          const cachedResponse = await caches.match(event.request, { ignoreSearch: true })
+          if (cachedResponse) {
+            return cachedResponse
+          }
+          
+          return caches.match(OFFLINE_URL) || new Response('Você está offline. Conecte-se à internet.', { 
+            status: 503,
+            statusText: 'Offline',
+            headers: { 'Content-Type': 'text/plain' }
+          })
         }
+      })()
+    )
+    return
+  }
+  
+  // 🔥 Outros recursos: Cache First
+  event.respondWith(
+    caches.match(event.request, { ignoreSearch: true })
+      .then(cachedResponse => {
+        if (cachedResponse) return cachedResponse
         
         return fetch(event.request)
           .then(response => {
-            if (response && response.status === 200) {
+            if (response && response.ok) {
               const responseClone = response.clone()
-              caches.open(CACHE_NAME).then(cache => {
-                cache.put(event.request, responseClone)
+              caches.open(DYNAMIC_CACHE).then(async cache => {
+                await cache.put(event.request, responseClone)
+                await limitCache(DYNAMIC_CACHE)
               })
             }
             return response
           })
           .catch(() => {
-            // Se for uma imagem, retorna um placeholder
-            if (event.request.url.match(/\.(jpg|jpeg|png|gif|svg)$/)) {
-              return caches.match('/favicon.ico')
-            }
             return new Response('Recurso não disponível offline', {
               status: 503,
               statusText: 'Offline'
@@ -112,7 +198,7 @@ self.addEventListener('fetch', (event) => {
   )
 })
 
-// --- SINCronização EM SEGUNDO PLANO ---
+// --- SINCRONIZAÇÃO ---
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-offline-queue') {
     console.log('[SW] Sincronizando dados pendentes...')
@@ -123,8 +209,6 @@ self.addEventListener('sync', (event) => {
 async function syncOfflineData() {
   const clients = await self.clients.matchAll()
   clients.forEach(client => {
-    client.postMessage({
-      type: 'SYNC_OFFLINE_DATA'
-    })
+    client.postMessage({ type: 'SYNC_OFFLINE_DATA' })
   })
 }

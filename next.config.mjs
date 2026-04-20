@@ -12,7 +12,7 @@ const nextConfig = {
           },
           {
             key: 'Cache-Control',
-            value: 'no-cache, no-store, must-revalidate',
+            value: 'no-store',
           },
           {
             key: 'Service-Worker-Allowed',
@@ -29,7 +29,15 @@ const nextConfig = {
           },
           {
             key: 'Cache-Control',
-            value: 'no-store, max-age=0, must-revalidate',
+            value: 'no-store',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
           },
         ],
       },
@@ -47,7 +55,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'no-cache, no-store, must-revalidate',
+            value: 'no-store',
           },
         ],
       },
@@ -63,7 +71,6 @@ const nextConfig = {
   },
   // Webpack config para suporte a PWA
   webpack: (config, { isServer }) => {
-    // Ignora warnings específicos do service worker
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

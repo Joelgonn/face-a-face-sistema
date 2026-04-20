@@ -44,14 +44,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <meta charSet="utf-8" />
-
-        {/* 🔥 ESSA LINHA RESOLVE TUDO - MANIFEST MANUAL */}
         <link rel="manifest" href="/manifest.json" />
-
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Face a Face" />
-
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
         <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
@@ -61,16 +54,35 @@ export default function RootLayout({
       >
         {children}
         
-        {/* REGISTRO DO SERVICE WORKER */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
+                const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+                console.log('[PWA] Modo:', isPWA ? 'instalado' : 'navegador');
+                
+                window.addEventListener('online', () => console.log('[PWA] Conexão restaurada'));
+                
                 window.addEventListener('load', () => {
                   navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
-                    .catch(err => console.error('[PWA] Erro ao registrar SW:', err))
-                })
+                    .then(reg => {
+                      console.log('[PWA] SW registrado');
+                      reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', () => {
+                          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('[PWA] Nova versão disponível');
+                          }
+                        });
+                      });
+                    })
+                    .catch(err => console.error('[PWA] Erro:', err));
+                    
+                  navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    console.log('[PWA] SW atualizado, recarregando...');
+                    window.location.reload();
+                  });
+                });
               }
             `,
           }}
