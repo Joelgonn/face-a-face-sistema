@@ -37,42 +37,55 @@ export default function EquipeClient({ initialUsuarios, currentUser }: EquipeCli
     setDeleteConfirmation('');
   };
 
-  // 2. Executa a exclusão (Chamada pelo Modal)
+  // 2. Executa a exclusão COM ROLLBACK (Padrão consistente)
   const confirmarExclusao = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     
-    if (!userToDelete) return;
+    if (!userToDelete) return
     
-    // CORREÇÃO AQUI: Ignora espaços e deixa tudo maiúsculo para validar
-    if (deleteConfirmation.trim().toUpperCase() !== 'DELETAR') return;
+    if (deleteConfirmation.trim().toUpperCase() !== 'DELETAR') return
 
-    setProcessingId(userToDelete.id);
-    const resultado = await excluirUsuario(userToDelete.id);
+    setProcessingId(userToDelete.id)
+
+    const backup = [...usuarios]
+
+    // Optimistic update
+    setUsuarios(prev => prev.filter(u => u.id !== userToDelete.id))
+
+    const resultado = await excluirUsuario(userToDelete.id)
     
     if (resultado.success) {
-        setUsuarios(prev => prev.filter(u => u.id !== userToDelete.id));
-        setUserToDelete(null); 
+      setUserToDelete(null)
     } else {
-        alert("Erro: " + resultado.message);
+      setUsuarios(backup)
+      alert("❌ Erro: " + resultado.message)
     }
-    setProcessingId(null);
-};
 
-  // 3. Pausar/Retomar Acesso
+    setProcessingId(null)
+  }
+
+  // 3. Pausar/Retomar Acesso COM ROLLBACK
   const handleTogglePause = async (id: string, isPaused: boolean) => {
-    setProcessingId(id);
-    
-    // Atualização otimista na tela (parece instantâneo para o usuário)
-    setUsuarios(prev => prev.map(u => u.id === id ? { ...u, banned_until: isPaused ? null : '2099-01-01' } : u));
+    setProcessingId(id)
 
-    const resultado = await alternarBloqueioUsuario(id, !isPaused);
+    const backup = [...usuarios]
+
+    // Optimistic update
+    setUsuarios(prev =>
+      prev.map(u =>
+        u.id === id ? { ...u, banned_until: isPaused ? null : '2099-01-01' } : u
+      )
+    )
+
+    const resultado = await alternarBloqueioUsuario(id, !isPaused)
 
     if (!resultado.success) {
-        alert("Erro na operação: " + resultado.message);
-        // Se falhar, você idealmente recarregaria os dados ou reverteria o estado aqui
+      setUsuarios(backup)
+      alert("❌ Erro na operação: " + resultado.message)
     }
-    setProcessingId(null);
-  };
+
+    setProcessingId(null)
+  }
 
   const formatarData = (dataIso: string | undefined) => {
     if (!dataIso) return 'Nunca acessou';
@@ -133,7 +146,7 @@ export default function EquipeClient({ initialUsuarios, currentUser }: EquipeCli
                             <div className={`w-14 h-14 rounded-[1.2rem] flex items-center justify-center shrink-0 shadow-inner ${isMe ? 'bg-orange-100 text-orange-600 border border-orange-200' : isPaused ? 'bg-slate-100 text-slate-400 border border-slate-200' : 'bg-slate-800 text-white shadow-slate-900/20'}`}>
                                 {isMe ? <Shield size={28} /> : <User size={28} />}
                             </div>
-                            <div className="overflow-hidden pr-16"> {/* pr-16 para não encostar no badge */}
+                            <div className="overflow-hidden pr-16">
                                 <p className={`font-black text-lg truncate ${isPaused ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                                     {u.email}
                                 </p>
@@ -178,7 +191,7 @@ export default function EquipeClient({ initialUsuarios, currentUser }: EquipeCli
                                 <button 
                                     onClick={() => solicitarExclusao(u.id, u.email || 'Sem email')}
                                     disabled={isProcessing}
-                                    className="w-12 flex items-center justify-center rounded-xl bg-rose-50 border border-rose-100 text-rose-500 hover:bg-rose-600 hover:text-white hover:shadow-lg hover:shadow-rose-600/30 transition-all"
+                                    className="w-12 flex items-center justify-center rounded-xl bg-rose-50 border border-rose-100 text-rose-500 hover:bg-rose-600 hover:text-white hover:shadow-lg hover:shadow-rose-600/30 transition-all disabled:opacity-50"
                                     title="Excluir Usuário"
                                 >
                                     <Trash2 size={18} />
@@ -235,7 +248,6 @@ export default function EquipeClient({ initialUsuarios, currentUser }: EquipeCli
                             </button>
                             <button 
                                 type="submit" 
-                                // CORREÇÃO AQUI
                                 disabled={deleteConfirmation.trim().toUpperCase() !== 'DELETAR' || processingId === userToDelete.id} 
                                 className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black hover:bg-rose-700 shadow-lg shadow-rose-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2"
                             >

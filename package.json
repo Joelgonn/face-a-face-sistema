@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.86.0",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.555.0",
     "next": "14.2.35",
     "papaparse": "^5.5.3",

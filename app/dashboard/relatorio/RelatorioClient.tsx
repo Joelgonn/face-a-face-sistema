@@ -20,45 +20,79 @@ export interface RegistroRelatorio {
 export default function RelatorioClient({ initialRegistros }: { initialRegistros: RegistroRelatorio[] }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
-  const [showStats, setShowStats] = useState(false); // NOVO: Controle da Visão Geral
+  const [showStats, setShowStats] = useState(false);
 
+  // --- FILTRO BLINDADO (ANTI-CRASH) ---
   const filtered = useMemo(() => {
     return initialRegistros.filter(reg => {
-      const matchesSearch = 
-        reg.paciente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reg.medicamento.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        reg.administrador.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesDate = filterDate ? reg.data_hora.startsWith(filterDate) : true;
-      return matchesSearch && matchesDate;
-    });
-  }, [initialRegistros, searchTerm, filterDate]);
+      const paciente = (reg.paciente || '').toLowerCase()
+      const medicamento = (reg.medicamento || '').toLowerCase()
+      const administrador = (reg.administrador || '').toLowerCase()
+
+      const termo = searchTerm.toLowerCase()
+
+      const matchesSearch =
+        paciente.includes(termo) ||
+        medicamento.includes(termo) ||
+        administrador.includes(termo)
+
+      const matchesDate = filterDate
+        ? (reg.data_hora || '').startsWith(filterDate)
+        : true
+
+      return matchesSearch && matchesDate
+    })
+  }, [initialRegistros, searchTerm, filterDate])
 
   const stats = useMemo(() => {
     const hoje = new Date().toISOString().split('T')[0];
-    const dosesHoje = initialRegistros.filter(r => r.data_hora.startsWith(hoje)).length;
-    const pacientesUnicos = new Set(initialRegistros.map(r => r.paciente)).size;
+    const dosesHoje = initialRegistros.filter(r => (r.data_hora || '').startsWith(hoje)).length;
+    const pacientesUnicos = new Set(initialRegistros.map(r => r.paciente || '')).size;
     return { total: initialRegistros.length, hoje: dosesHoje, pacientes: pacientesUnicos };
   }, [initialRegistros]);
 
-  const formatarNome = (email: string) => {
-    const parte = email.split('@')[0];
-    return parte.replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  // --- FORMATAR NOME BLINDADO ---
+  const formatarNome = (email?: string) => {
+    if (!email) return 'Desconhecido'
 
+    const parte = email.split('@')[0]
+    return parte
+      .replace(/[._]/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase())
+  }
+
+  // --- EXPORT CSV COM PROTEÇÃO ---
   const handleExportCSV = () => {
-    const headers = ["Data,Hora,Paciente,Medicamento,Dosagem,Aplicado Por"];
-    const rows = filtered.map(r => {
-        const d = new Date(r.data_hora);
-        return `"${d.toLocaleDateString('pt-BR')}","${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}","${r.paciente}","${r.medicamento}","${r.dosagem}","${r.administrador}"`;
-    });
-    const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `relatorio_face_a_face.csv`);
-    document.body.appendChild(link);
-    link.click();
+    try {
+      if (!filtered || filtered.length === 0) {
+        alert('⚠️ Não há dados para exportar.')
+        return
+      }
+
+      const headers = ["Data,Hora,Paciente,Medicamento,Dosagem,Aplicado Por"]
+
+      const rows = filtered.map(r => {
+        const d = new Date(r.data_hora)
+
+        return `"${d.toLocaleDateString('pt-BR')}","${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}","${r.paciente || ''}","${r.medicamento || ''}","${r.dosagem || ''}","${r.administrador || ''}"`
+      })
+
+      const csvContent = "\uFEFF" + [headers, ...rows].join("\n")
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `relatorio_face_a_face.csv`
+      link.click()
+
+      URL.revokeObjectURL(url)
+
+    } catch (err) {
+      console.error('Erro ao exportar CSV:', err)
+      alert('❌ Erro ao exportar relatório. Tente novamente.')
+    }
   };
 
   return (
@@ -163,26 +197,26 @@ export default function RelatorioClient({ initialRegistros }: { initialRegistros
                         <div className="flex justify-between items-start">
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center text-orange-700 font-black uppercase text-sm shadow-inner shrink-0">
-                                    {reg.paciente[0]}
+                                    {(reg.paciente || '?')[0]}
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-slate-800 text-lg leading-tight">{reg.paciente}</h3>
+                                    <h3 className="font-black text-slate-800 text-lg leading-tight">{reg.paciente || 'Desconhecido'}</h3>
                                     <div className="flex items-center gap-1 text-slate-400 mt-0.5">
                                         <Clock size={12} />
                                         <span className="text-[10px] font-bold uppercase tracking-wider">
-                                            {new Date(reg.data_hora).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} • {new Date(reg.data_hora).toLocaleDateString('pt-BR', {day:'2-digit', month:'short'})}
+                                            {reg.data_hora ? new Date(reg.data_hora).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '--:--'} • {reg.data_hora ? new Date(reg.data_hora).toLocaleDateString('pt-BR', {day:'2-digit', month:'short'}) : '--/--'}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-black text-[10px] border border-blue-100 shrink-0 mt-1">
-                                {reg.dosagem}
+                                {reg.dosagem || '---'}
                             </div>
                         </div>
 
                         <div className="bg-slate-50 rounded-2xl p-3 flex items-center gap-3 border border-slate-100">
                             <div className="p-2 bg-white rounded-xl shadow-sm text-blue-500"><Pill size={18}/></div>
-                            <span className="font-bold text-slate-700 text-sm uppercase tracking-tight">{reg.medicamento}</span>
+                            <span className="font-bold text-slate-700 text-sm uppercase tracking-tight">{reg.medicamento || 'Medicação não informada'}</span>
                         </div>
 
                         <div className="flex items-center justify-between pt-2 border-t border-slate-50">
@@ -213,23 +247,23 @@ export default function RelatorioClient({ initialRegistros }: { initialRegistros
                     {filtered.map((reg) => (
                         <tr key={reg.id} className="hover:bg-orange-50/40 transition-all group">
                             <td className="p-6 text-slate-700 font-bold">
-                                {new Date(reg.data_hora).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                {reg.data_hora ? new Date(reg.data_hora).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--/-- --:--'}
                             </td>
                             <td className="p-6">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center text-orange-700 font-black text-sm shrink-0 shadow-inner group-hover:bg-orange-500 group-hover:text-white transition-colors duration-300">
-                                        {reg.paciente[0]}
+                                        {(reg.paciente || '?')[0]}
                                     </div>
-                                    <span className="font-black text-slate-800 text-lg group-hover:text-orange-600 transition-colors">{reg.paciente}</span>
+                                    <span className="font-black text-slate-800 text-lg group-hover:text-orange-600 transition-colors">{reg.paciente || 'Desconhecido'}</span>
                                 </div>
                             </td>
                             <td className="p-6">
                                 <div className="flex items-center gap-2 text-slate-600 font-bold bg-slate-50 w-fit px-3 py-2 rounded-xl border border-slate-100 group-hover:bg-white transition-colors">
                                     <Pill size={16} className="text-blue-500" />
-                                    {reg.medicamento}
+                                    {reg.medicamento || '---'}
                                 </div>
                             </td>
-                            <td className="p-6"><span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-black text-[10px] tracking-wider border border-blue-100 uppercase">{reg.dosagem}</span></td>
+                            <td className="p-6"><span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-black text-[10px] tracking-wider border border-blue-100 uppercase">{reg.dosagem || '---'}</span></td>
                             <td className="p-6">
                                 <div className="flex items-center gap-2">
                                     <ShieldCheck size={16} className="text-emerald-500" />

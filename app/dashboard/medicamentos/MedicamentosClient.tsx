@@ -22,6 +22,26 @@ interface ToastNotification {
   message: string;
 }
 
+// --- FUNÇÃO SAFE QUERY (IDÊNTICA AOS OUTROS COMPONENTES, INFERÊNCIA AUTOMÁTICA) ---
+async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    const result = await fn()
+    
+    // Verifica se é uma resposta do Supabase com erro
+    if (result && typeof result === 'object') {
+      const possibleError = result as { error?: { message: string } }
+      if (possibleError.error) {
+        throw possibleError.error
+      }
+    }
+    
+    return result
+  } catch (err) {
+    console.error('🔥 Erro crítico:', err)
+    return null 
+  }
+}
+
 export default function MedicamentosClient({ initialMedicamentos }: MedicamentosClientProps) {
   const [medicamentos, setMedicamentos] = useState<MedicamentoRow[]>(initialMedicamentos);
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,7 +52,7 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
   const [nome, setNome] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [toast, setToast] = useState<ToastNotification | null>(null);
+  const[toast, setToast] = useState<ToastNotification | null>(null);
 
   const supabase = createClient();
   
@@ -47,50 +67,109 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
     setIsModalOpen(true);
   };
 
+  // --- HANDLE SALVAR COM SAFE QUERY E VALIDAÇÃO DE DUPLICIDADE ---
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome.trim()) return;
+
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) {
+      showToast('error', 'Atenção', 'Digite o nome do medicamento.');
+      return;
+    }
+
+    // VALIDAÇÃO DE DUPLICIDADE
+    const nomeNormalizado = nomeLimpo.toLowerCase();
+
+    const existe = medicamentos.some(
+      m => (m.nome || '').trim().toLowerCase() === nomeNormalizado
+    );
+
+    // Se estiver editando, ignora o próprio item
+    if (existe && (!currentMed || currentMed.nome?.toLowerCase() !== nomeNormalizado)) {
+      showToast('error', 'Duplicado', 'Medicamento já existe na base.');
+      return;
+    }
+
     setSaving(true);
 
     if (currentMed) {
-        const { error } = await supabase.from('medicamentos').update({ nome }).eq('id', currentMed.id);
-        if (!error) {
-            setMedicamentos(prev => prev.map(m => m.id === currentMed.id ? { ...m, nome } : m));
-            showToast('success', 'Atualizado', 'Medicamento alterado com sucesso.');
-            setIsModalOpen(false);
-        } else {
-            showToast('error', 'Erro', error.message);
-        }
+      // UPDATE
+      const backup =[...medicamentos];
+      const medicamentoAtualizado = { ...currentMed, nome: nomeLimpo };
+      setMedicamentos(prev =>
+        prev.map(m => (m.id === currentMed.id ? medicamentoAtualizado : m))
+      );
+
+      const result = await safeQuery(async () =>
+        await supabase
+          .from('medicamentos')
+          .update({ nome: nomeLimpo })
+          .eq('id', currentMed.id)
+          .select()
+      );
+
+      if (!result) {
+        setMedicamentos(backup);
+        showToast('error', 'Erro', 'Falha ao atualizar medicamento. Tente novamente.');
+        setSaving(false);
+        return;
+      }
+
+      showToast('success', 'Atualizado', 'Medicamento alterado com sucesso.');
     } else {
-        const { data, error } = await supabase.from('medicamentos').insert({ nome }).select().single();
-        if (!error && data) {
-            setMedicamentos(prev => [data, ...prev].sort((a, b) => (a.nome || '').localeCompare(b.nome || '')));
-            showToast('success', 'Criado', 'Medicamento adicionado à base.');
-            setIsModalOpen(false);
-        } else {
-            showToast('error', 'Erro', error.message || 'Erro ao criar');
-        }
+      // INSERT
+      const result = await safeQuery(async () =>
+        await supabase
+          .from('medicamentos')
+          .insert({ nome: nomeLimpo })
+          .select()
+          .single()
+      );
+
+      if (!result || !result.data) {
+        showToast('error', 'Erro', 'Falha ao criar medicamento. Tente novamente.');
+        setSaving(false);
+        return;
+      }
+
+      const novo = result.data;
+
+      setMedicamentos(prev =>
+        [novo, ...prev].sort((a, b) =>
+          (a.nome || '').localeCompare(b.nome || '')
+        )
+      );
+
+      showToast('success', 'Criado', 'Medicamento adicionado à base.');
     }
+
+    setIsModalOpen(false);
     setSaving(false);
   };
 
+  // --- HANDLE EXCLUIR COM SAFE QUERY E ROLLBACK ---
   const handleExcluir = async (id: number) => {
     const backup = [...medicamentos];
+
+    // Optimistic update
     setMedicamentos(prev => prev.filter(m => m.id !== id));
     setDeletingId(null);
 
-    const { error } = await supabase.from('medicamentos').delete().eq('id', id);
-    if (error) {
-        setMedicamentos(backup);
-        showToast('error', 'Erro ao excluir', 'O medicamento pode estar em uso.');
-    } else {
-        showToast('success', 'Excluído', 'Medicamento removido da base.');
+    const result = await safeQuery(async () =>
+      await supabase.from('medicamentos').delete().eq('id', id).select()
+    );
+
+    if (!result) {
+      setMedicamentos(backup);
+      showToast('error', 'Erro ao excluir', 'O medicamento pode estar em uso em alguma prescrição.');
+      return;
     }
+
+    showToast('success', 'Excluído', 'Medicamento removido da base.');
   };
 
   const filtered = useMemo(() => 
-    medicamentos.filter(m => (m.nome || '').toLowerCase().includes(searchTerm.toLowerCase())),
-    [medicamentos, searchTerm]
+    medicamentos.filter(m => (m.nome || '').toLowerCase().includes(searchTerm.toLowerCase())),[medicamentos, searchTerm]
   );
 
   return (
@@ -164,10 +243,10 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
                         </div>
                         
                         <div className="flex gap-2">
-                            <button onClick={() => abrirModal(med)} className="p-3 bg-slate-50 text-slate-400 rounded-xl active:bg-orange-100 active:text-orange-600 transition-colors">
+                            <button onClick={() => abrirModal(med)} disabled={saving} className="p-3 bg-slate-50 text-slate-400 rounded-xl active:bg-orange-100 active:text-orange-600 transition-colors disabled:opacity-50">
                                 <Pencil size={18} />
                             </button>
-                            <button onClick={() => setDeletingId(med.id)} className="p-3 bg-slate-50 text-slate-400 rounded-xl active:bg-red-100 active:text-red-600 transition-colors">
+                            <button onClick={() => setDeletingId(med.id)} disabled={saving} className="p-3 bg-slate-50 text-slate-400 rounded-xl active:bg-red-100 active:text-red-600 transition-colors disabled:opacity-50">
                                 <Trash2 size={18} />
                             </button>
                         </div>
@@ -194,14 +273,14 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
                                     <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-orange-600 font-black">{med.nome?.[0].toUpperCase()}</div>
                                     <span className="font-bold text-slate-800 text-lg">{med.nome}</span>
                                 </div>
-                            </td>
+                             </td>
                             <td className="p-6 text-slate-400 font-mono text-xs tracking-widest">#{med.id}</td>
                             <td className="p-6">
                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => abrirModal(med)} className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-orange-600 shadow-sm transition-all border border-transparent hover:border-slate-100">
+                                    <button onClick={() => abrirModal(med)} disabled={saving} className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-orange-600 shadow-sm transition-all border border-transparent hover:border-slate-100 disabled:opacity-50">
                                         <Pencil size={18} />
                                     </button>
-                                    <button onClick={() => setDeletingId(med.id)} className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-red-600 shadow-sm transition-all border border-transparent hover:border-slate-100">
+                                    <button onClick={() => setDeletingId(med.id)} disabled={saving} className="p-2 hover:bg-white rounded-lg text-slate-400 hover:text-red-600 shadow-sm transition-all border border-transparent hover:border-slate-100 disabled:opacity-50">
                                         <Trash2 size={18} />
                                     </button>
                                 </div>
@@ -271,7 +350,7 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
                 </p>
                 <div className="flex gap-3">
                     <button onClick={() => setDeletingId(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-colors">Cancelar</button>
-                    <button onClick={() => handleExcluir(deletingId)} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-200 hover:bg-red-700 transition-all active:scale-95">Excluir</button>
+                    <button onClick={() => handleExcluir(deletingId)} disabled={saving} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-200 hover:bg-red-700 transition-all active:scale-95 disabled:opacity-50">Excluir</button>
                 </div>
             </div>
         </div>

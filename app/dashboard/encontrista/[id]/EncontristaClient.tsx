@@ -10,6 +10,26 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+// --- FUNÇÃO SAFE QUERY (SEM ALERT INTERNO E TOTALMENTE TIPADA) ---
+async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    const result = await fn()
+    
+    // Verifica se é uma resposta do Supabase com erro
+    if (result && typeof result === 'object') {
+      const possibleError = result as { error?: { message: string } }
+      if (possibleError.error) {
+        throw possibleError.error
+      }
+    }
+    
+    return result
+  } catch (err) {
+    console.error('🔥 Erro crítico:', err)
+    return null // Apenas retorna null, quem chama decide o feedback
+  }
+}
+
 // --- TIPAGEM ---
 type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
 type PrescricaoRow = Database['public']['Tables']['prescricoes']['Row'];
@@ -31,40 +51,40 @@ interface EncontristaClientProps {
 
 // --- CONSTANTES ---
 const FAMILIAS_DE_RISCO: Record<string, string[]> = {
-  'penicilina': ['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina', 'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem', 'ertapenem', 'aztreonam'],
-  'aines': ['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib', 'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
-  'sulfa': ['sulfametoxazol', 'trimetoprima', 'bactrim', 'sulfadiazina', 'sulfasalazina', 'sulfadoxina', 'sulfamerazina'],
-  'dipirona': ['novalgina', 'lisador', 'magnopyrol', 'dipimed', 'neosaldina', 'buscofen', 'termopirona'],
-  'paracetamol': ['tylenol', 'parador', 'dôrico', 'acetaminofen', 'cimegripe', 'tandrilax', 'vic'],
-  'corticoides': ['prednisona', 'dexametasona', 'hidrocortisona', 'betametasona', 'metilprednisolona', 'triancinolona', 'cortisona', 'deflazacorte'],
-  'ieca': ['captopril', 'enalapril', 'lisinopril', 'ramipril', 'perindopril', 'quinapril', 'fosinopril', 'benazepril'],
-  'bra': ['losartan', 'valsartan', 'candesartan', 'irbesartan', 'olmesartan', 'telmisartan', 'eprosartan', 'azilsartan'],
-  'estatinas': ['sinvastatina', 'atorvastatina', 'rosuvastatina', 'pravastatina', 'lovastatina', 'fluvastatina', 'pitavastatina'],
-  'anticonvulsivantes': ['fenitoína', 'carbamazepina', 'valproato', 'fenobarbital', 'oxcarbazepina', 'lamotrigina', 'gabapentina', 'pregabalina', 'topiramato', 'levetiracetam'],
-  'antidepressivos_ssri': ['fluoxetina', 'sertralina', 'paroxetina', 'citalopram', 'escitalopram', 'fluvoxamina'],
-  'antidepressivos_triciclicos': ['amitriptilina', 'imipramina', 'clomipramina', 'nortriptilina', 'desipramina'],
-  'antipsicoticos': ['haloperidol', 'clorpromazina', 'risperidona', 'quetiapina', 'olanzapina', 'aripiprazol', 'ziprasidona', 'clozapina'],
-  'acoas': ['varfarina', 'acenocumarol'],
-  'doacs': ['dabigatrana', 'rivaroxabana', 'apixabana', 'edoxabana'],
-  'antiagregantes': ['aas', 'clopidogrel', 'ticagrelor', 'prasugrel', 'dipiridamol', 'ticlopidina'],
-  'diureticos_tiazidicos': ['hidroclorotiazida', 'clortalidona', 'indapamida'],
-  'diureticos_aliança': ['furosemida', 'bumetanida', 'torasemida'],
-  'diureticos_poupadores': ['espironolactona', 'amilorida', 'triamtereno'],
-  'betabloqueadores': ['propranolol', 'atenolol', 'metoprolol', 'carvedilol', 'bisoprolol', 'nebivolol', 'labetalol'],
-  'bloqueadores_calcio': ['anlodipino', 'nifedipino', 'verapamil', 'diltiazem', 'nicardipino', 'felodipino'],
-  'quimioterapicos': ['cisplatina', 'carboplatina', 'oxaliplatina', 'ciclofosfamida', 'doxorrubicina', 'vincristina', 'paclitaxel', 'docetaxel', 'metotrexato', '5-fluorouracil', 'gemcitabina'],
-  'imunossupressores': ['ciclosporina', 'tacrolimo', 'sirolimo', 'micofenolato', 'azatioprina', 'leflunomida', 'metotrexato'],
-  'contraste_iodado': ['iohexol', 'iopamidol', 'ioversol', 'iodixanol', 'ioxitol'],
-  'laxantes_estimulantes': ['bisacodil', 'picosulfato', 'sena', 'cáscara sagrada'],
-  'laxantes_osmoticos': ['lactulose', 'polietilenoglicol', 'hidróxido de magnésio'],
-  'opioides': ['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona', 'fentanila', 'metadona', 'buprenorfina'],
-  'benzodiazepinicos': ['diazepam', 'lorazepam', 'clonazepam', 'alprazolam', 'bromazepam', 'midazolam', 'clordiazepóxido'],
-  'antifungicos_azois': ['fluconazol', 'itraconazol', 'cetoconazol', 'voriconazol', 'posaconazol', 'isavuconazol'],
-  'antivirais_herpes': ['aciclovir', 'valaciclovir', 'famciclovir', 'ganciclovir'],
-  'antivirais_hiv': ['tenofovir', 'lamivudina', 'zidovudina', 'efavirenz', 'ritonavir', 'darunavir', 'dolutegravir', 'raltegravir'],
-  'antiemeticos': ['ondansetrona', 'metoclopramida', 'domperidona', 'bromoprida', 'prometazina', 'dexametasona'],
-  'broncodilatadores_beta2': ['salbutamol', 'fenoterol', 'formoterol', 'salmeterol', 'indacaterol', 'vilanterol'],
-  'broncodilatadores_anticolinergicos': ['ipratrópio', 'tiotrópio', 'aclidínio', 'glicopirrônio', 'umelidínio']
+  'penicilina':['amoxicilina', 'ampicilina', 'benzilpenicilina', 'piperacilina', 'clavulanato', 'benzetacil', 'oxacilina', 'cefalexina', 'cefazolina', 'ceftriaxona', 'cefuroxima', 'cefepima', 'meropenem', 'imipenem', 'ertapenem', 'aztreonam'],
+  'aines':['ibuprofeno', 'diclofenaco', 'aspirina', 'aas', 'nimesulida', 'cetoprofeno', 'naproxeno', 'piroxicam', 'indometacina', 'celecoxib', 'etoricoxib', 'meloxicam', 'aceclofenaco', 'tenoxicam', 'nabumetona'],
+  'sulfa':['sulfametoxazol', 'trimetoprima', 'bactrim', 'sulfadiazina', 'sulfasalazina', 'sulfadoxina', 'sulfamerazina'],
+  'dipirona':['novalgina', 'lisador', 'magnopyrol', 'dipimed', 'neosaldina', 'buscofen', 'termopirona'],
+  'paracetamol':['tylenol', 'parador', 'dôrico', 'acetaminofen', 'cimegripe', 'tandrilax', 'vic'],
+  'corticoides':['prednisona', 'dexametasona', 'hidrocortisona', 'betametasona', 'metilprednisolona', 'triancinolona', 'cortisona', 'deflazacorte'],
+  'ieca':['captopril', 'enalapril', 'lisinopril', 'ramipril', 'perindopril', 'quinapril', 'fosinopril', 'benazepril'],
+  'bra':['losartan', 'valsartan', 'candesartan', 'irbesartan', 'olmesartan', 'telmisartan', 'eprosartan', 'azilsartan'],
+  'estatinas':['sinvastatina', 'atorvastatina', 'rosuvastatina', 'pravastatina', 'lovastatina', 'fluvastatina', 'pitavastatina'],
+  'anticonvulsivantes':['fenitoína', 'carbamazepina', 'valproato', 'fenobarbital', 'oxcarbazepina', 'lamotrigina', 'gabapentina', 'pregabalina', 'topiramato', 'levetiracetam'],
+  'antidepressivos_ssri':['fluoxetina', 'sertralina', 'paroxetina', 'citalopram', 'escitalopram', 'fluvoxamina'],
+  'antidepressivos_triciclicos':['amitriptilina', 'imipramina', 'clomipramina', 'nortriptilina', 'desipramina'],
+  'antipsicoticos':['haloperidol', 'clorpromazina', 'risperidona', 'quetiapina', 'olanzapina', 'aripiprazol', 'ziprasidona', 'clozapina'],
+  'acoas':['varfarina', 'acenocumarol'],
+  'doacs':['dabigatrana', 'rivaroxabana', 'apixabana', 'edoxabana'],
+  'antiagregantes':['aas', 'clopidogrel', 'ticagrelor', 'prasugrel', 'dipiridamol', 'ticlopidina'],
+  'diureticos_tiazidicos':['hidroclorotiazida', 'clortalidona', 'indapamida'],
+  'diureticos_aliança':['furosemida', 'bumetanida', 'torasemida'],
+  'diureticos_poupadores':['espironolactona', 'amilorida', 'triamtereno'],
+  'betabloqueadores':['propranolol', 'atenolol', 'metoprolol', 'carvedilol', 'bisoprolol', 'nebivolol', 'labetalol'],
+  'bloqueadores_calcio':['anlodipino', 'nifedipino', 'verapamil', 'diltiazem', 'nicardipino', 'felodipino'],
+  'quimioterapicos':['cisplatina', 'carboplatina', 'oxaliplatina', 'ciclofosfamida', 'doxorrubicina', 'vincristina', 'paclitaxel', 'docetaxel', 'metotrexato', '5-fluorouracil', 'gemcitabina'],
+  'imunossupressores':['ciclosporina', 'tacrolimo', 'sirolimo', 'micofenolato', 'azatioprina', 'leflunomida', 'metotrexato'],
+  'contraste_iodado':['iohexol', 'iopamidol', 'ioversol', 'iodixanol', 'ioxitol'],
+  'laxantes_estimulantes':['bisacodil', 'picosulfato', 'sena', 'cáscara sagrada'],
+  'laxantes_osmoticos':['lactulose', 'polietilenoglicol', 'hidróxido de magnésio'],
+  'opioides':['morfina', 'codeína', 'tramadol', 'oxicodona', 'hidromorfona', 'fentanila', 'metadona', 'buprenorfina'],
+  'benzodiazepinicos':['diazepam', 'lorazepam', 'clonazepam', 'alprazolam', 'bromazepam', 'midazolam', 'clordiazepóxido'],
+  'antifungicos_azois':['fluconazol', 'itraconazol', 'cetoconazol', 'voriconazol', 'posaconazol', 'isavuconazol'],
+  'antivirais_herpes':['aciclovir', 'valaciclovir', 'famciclovir', 'ganciclovir'],
+  'antivirais_hiv':['tenofovir', 'lamivudina', 'zidovudina', 'efavirenz', 'ritonavir', 'darunavir', 'dolutegravir', 'raltegravir'],
+  'antiemeticos':['ondansetrona', 'metoclopramida', 'domperidona', 'bromoprida', 'prometazina', 'dexametasona'],
+  'broncodilatadores_beta2':['salbutamol', 'fenoterol', 'formoterol', 'salmeterol', 'indacaterol', 'vilanterol'],
+  'broncodilatadores_anticolinergicos':['ipratrópio', 'tiotrópio', 'aclidínio', 'glicopirrônio', 'umelidínio']
 };
 
 const SINONIMOS_MEDICAMENTOS: Record<string, string> = {
@@ -114,32 +134,32 @@ export default function EncontristaClient({
   const [medicacoes, setMedicacoes] = useState<PrescricaoRow[]>(initialMedicacoes);
   const [historico, setHistorico] = useState<HistoricoItem[]>(initialHistorico);
   
-  const [loading, setLoading] = useState(false); // Agora começa false!
-  const [infoExpanded, setInfoExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const[infoExpanded, setInfoExpanded] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [medNome, setMedNome] = useState('');
+  const[medNome, setMedNome] = useState('');
   const [medDosagem, setMedDosagem] = useState('');
-  const [medPosologia, setMedPosologia] = useState('');
-  const [medHorario, setMedHorario] = useState('');
+  const[medPosologia, setMedPosologia] = useState('');
+  const[medHorario, setMedHorario] = useState('');
 
   const [isAdministerModalOpen, setIsAdministerModalOpen] = useState(false);
   const [selectedPrescricao, setSelectedPrescricao] = useState<PrescricaoRow | null>(null);
   const [horaAdministracao, setHoraAdministracao] = useState('');
 
-  const [medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
-  const [historyToDelete, setHistoryToDelete] = useState<number | null>(null);
-  const [allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
+  const[medicationToDelete, setMedicationToDelete] = useState<number | null>(null);
+  const[historyToDelete, setHistoryToDelete] = useState<number | null>(null);
+  const[allergyWarning, setAllergyWarning] = useState<{ show: boolean, message: string, onConfirm: () => void } | null>(null);
 
   const [sugestoes, setSugestoes] = useState<MedicamentoBaseRow[]>([]);
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const[isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editNome, setEditNome] = useState('');
   const [editResponsavel, setEditResponsavel] = useState('');
-  const [editAlergias, setEditAlergias] = useState('');
+  const[editAlergias, setEditAlergias] = useState('');
   const [editObservacoes, setEditObservacoes] = useState('');
 
   const supabase = createClient();
@@ -187,7 +207,7 @@ export default function EncontristaClient({
         if (remedioNormalizado.includes(alergia) || alergia.includes(remedioNormalizado)) {
             return `Possível alergia direta a: ${alergia.toUpperCase()}`;
         }
-        for (const [familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
+        for (const[familia, membros] of Object.entries(FAMILIAS_DE_RISCO)) {
             const nomeFamilia = normalizarTexto(familia);
             const membrosNormalizados = membros.map(m => normalizarTexto(m));
             if (alergia === nomeFamilia && membrosNormalizados.some(m => remedioNormalizado.includes(m))) {
@@ -241,25 +261,35 @@ export default function EncontristaClient({
     }
   };
 
-  // Esta função agora serve apenas para RECARREGAR dados após uma alteração (como adicionar medicação)
+  // --- CARREGAR DADOS COM SAFE QUERY E TRATAMENTO DE ERRO ---
   const carregarDados = useCallback(async () => {
-    setLoading(true); // Loading pontual, só para operações de escrita
-    const { data: pessoaData } = await supabase.from('encontristas').select('*').eq('id', id).single();
-    if (pessoaData) setPessoa(pessoaData);
+    setLoading(true);
     
-    const { data: medData } = await supabase.from('prescricoes').select('*').eq('encontrista_id', id);
-    setMedicacoes(medData || []);
+    const resultPessoa = await safeQuery(async () => 
+      await supabase.from('encontristas').select('*').eq('id', id).single()
+    );
+    if (resultPessoa?.data) setPessoa(resultPessoa.data);
     
-    if (medData && medData.length > 0) {
+    const resultMed = await safeQuery(async () => 
+      await supabase.from('prescricoes').select('*').eq('encontrista_id', id)
+    );
+    const medData = resultMed?.data ||[];
+    setMedicacoes(medData);
+    
+    if (medData.length > 0) {
         const idsPrescricoes = medData.map(m => m.id);
-        const { data: histData } = await supabase
-            .from('historico_administracao')
-            .select(`*, prescricao:prescricoes (nome_medicamento, dosagem)`)
-            .in('prescricao_id', idsPrescricoes)
-            .order('data_hora', { ascending: false });
-            
-        setHistorico((histData as unknown as HistoricoItem[]) || []);
-    } else { setHistorico([]); }
+        const resultHist = await safeQuery(async () =>
+            await supabase
+                .from('historico_administracao')
+                .select(`*, prescricao:prescricoes (nome_medicamento, dosagem)`)
+                .in('prescricao_id', idsPrescricoes)
+                .order('data_hora', { ascending: false })
+        );
+        setHistorico((resultHist?.data as unknown as HistoricoItem[]) ||[]);
+    } else { 
+        setHistorico([]); 
+    }
+    
     setLoading(false);
   }, [id, supabase]);
 
@@ -288,30 +318,72 @@ export default function EncontristaClient({
     setMostrarSugestoes(false);
   };
 
+  // --- UPDATE PESSOA COM ROLLBACK ---
   const handleUpdatePessoa = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const { error } = await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', id);
-    if (!error) { setIsEditModalOpen(false); carregarDados(); }
+    
+    const backup = { ...pessoa };
+    const novaPessoa = { ...pessoa, nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes };
+    setPessoa(novaPessoa);
+    
+    const result = await safeQuery(async () =>
+      await supabase.from('encontristas').update({ nome: editNome, responsavel: editResponsavel, alergias: editAlergias, observacoes: editObservacoes }).eq('id', id)
+    );
+    
+    if (!result) {
+      setPessoa(backup);
+      alert('❌ Erro ao salvar alterações. Tente novamente.');
+    } else {
+      setIsEditModalOpen(false);
+      await carregarDados();
+      alert('✅ Dados atualizados com sucesso!');
+    }
+    
     setSaving(false);
   };
 
+  // --- EXECUTAR SALVAR MEDICAÇÃO COM ROLLBACK ---
   const executeSalvarMedicacao = async () => {
     setSaving(true);
-    const { error } = await supabase.from('prescricoes').insert({ 
-        encontrista_id: id, 
-        nome_medicamento: medNome, 
-        dosagem: medDosagem, 
-        posologia: medPosologia, 
-        horario_inicial: medHorario 
-    });
-    if (!error) { setMedNome(''); setMedDosagem(''); setMedPosologia(''); setMedHorario(''); setIsModalOpen(false); setAllergyWarning(null); carregarDados(); }
+    
+    const novaMedicacao = {
+        encontrista_id: id,
+        nome_medicamento: medNome,
+        dosagem: medDosagem,
+        posologia: medPosologia,
+        horario_inicial: medHorario
+    };
+    
+    const backup = [...medicacoes];
+    
+    const result = await safeQuery(async () =>
+      await supabase.from('prescricoes').insert(novaMedicacao)
+    );
+    
+    if (result) {
+      setMedNome('');
+      setMedDosagem('');
+      setMedPosologia('');
+      setMedHorario('');
+      setIsModalOpen(false);
+      setAllergyWarning(null);
+      await carregarDados();
+      alert('✅ Medicação adicionada com sucesso!');
+    } else {
+      setMedicacoes(backup);
+      alert('❌ Erro ao salvar medicação. Tente novamente.');
+    }
+    
     setSaving(false);
   };
 
   const handleSalvarMedicacaoClick = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (medHorario.length !== 5 || !medHorario.includes(':')) { alert("Horário inválido"); return; }
+    if (medHorario.length !== 5 || !medHorario.includes(':')) { 
+      alert("⚠️ Horário inválido. Use formato HH:MM"); 
+      return; 
+    }
     
     const conflito = verificarConflitoAlergia(medNome);
     if (conflito) {
@@ -321,28 +393,72 @@ export default function EncontristaClient({
             onConfirm: () => executeSalvarMedicacao()
         });
     } else {
-        executeSalvarMedicacao();
+        await executeSalvarMedicacao();
     }
   };
 
-  const openDeleteModal = (id: number) => {
-    setMedicationToDelete(id);
-  };
-
+  // --- DELETE MEDICAÇÃO COM PROTEÇÃO (HISTÓRICO + PRESCRIÇÃO) ---
   const confirmDeleteMedication = async () => {
     if (!medicationToDelete) return;
-    const { error: errorHistory } = await supabase.from('historico_administracao').delete().eq('prescricao_id', medicationToDelete);
-    if (errorHistory) { alert("Erro ao limpar histórico: " + errorHistory.message); return; }
-    const { error } = await supabase.from('prescricoes').delete().eq('id', medicationToDelete);
-    if (!error) { setMedicationToDelete(null); carregarDados(); } 
-    else { alert("Erro ao excluir medicamento: " + error.message); }
+    setSaving(true);
+    
+    const backupMedicacoes =[...medicacoes];
+    const backupHistorico = [...historico];
+    
+    setMedicacoes(medicacoes.filter(m => m.id !== medicationToDelete));
+    setHistorico(historico.filter(h => h.prescricao_id !== medicationToDelete));
+    
+    const delHistory = await safeQuery(async () =>
+      await supabase.from('historico_administracao').delete().eq('prescricao_id', medicationToDelete)
+    );
+    
+    if (!delHistory) {
+      setMedicacoes(backupMedicacoes);
+      setHistorico(backupHistorico);
+      setSaving(false);
+      alert('❌ Erro ao excluir histórico. Tente novamente.');
+      return;
+    }
+    
+    const delPresc = await safeQuery(async () =>
+      await supabase.from('prescricoes').delete().eq('id', medicationToDelete)
+    );
+    
+    if (!delPresc) {
+      setMedicacoes(backupMedicacoes);
+      setHistorico(backupHistorico);
+      alert('❌ Erro ao excluir medicação. Tente novamente.');
+    } else {
+      setMedicationToDelete(null);
+      await carregarDados();
+      alert('✅ Medicação e histórico removidos com sucesso!');
+    }
+    
+    setSaving(false);
   };
 
+  // --- DELETE HISTÓRICO COM PROTEÇÃO ---
   const confirmDeleteHistory = async () => {
     if (!historyToDelete) return;
-    const { error } = await supabase.from('historico_administracao').delete().eq('id', historyToDelete);
-    if (!error) { setHistoryToDelete(null); carregarDados(); }
-    else { alert("Erro ao excluir registro: " + error.message); }
+    setSaving(true);
+    
+    const backup = [...historico];
+    setHistorico(historico.filter(h => h.id !== historyToDelete));
+    
+    const result = await safeQuery(async () =>
+      await supabase.from('historico_administracao').delete().eq('id', historyToDelete)
+    );
+    
+    if (!result) {
+      setHistorico(backup);
+      alert('❌ Erro ao excluir registro. Tente novamente.');
+    } else {
+      setHistoryToDelete(null);
+      await carregarDados();
+      alert('✅ Registro removido com sucesso!');
+    }
+    
+    setSaving(false);
   };
 
   const executeAbrirConfirmacao = (prescricao: PrescricaoRow) => {
@@ -368,6 +484,7 @@ export default function EncontristaClient({
     }
   };
 
+  // --- CONFIRMAR ADMINISTRAÇÃO COM ROLLBACK E AUTO CHECK-IN ---
   const confirmarAdministracao = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPrescricao || !horaAdministracao) return;
@@ -380,24 +497,55 @@ export default function EncontristaClient({
     const mes = String(hoje.getMonth() + 1).padStart(2, '0');
     const dia = String(hoje.getDate()).padStart(2, '0');
     
-    // Fuso de Brasília (-03:00) forçado
     const dataHoraFixa = `${ano}-${mes}-${dia}T${horaAdministracao}:00.000-03:00`;
 
-    await supabase.from('historico_administracao').insert({ 
+    const backupHistorico = [...historico];
+    
+    const result = await safeQuery(async () =>
+      await supabase.from('historico_administracao').insert({ 
         prescricao_id: selectedPrescricao.id, 
         data_hora: dataHoraFixa, 
         administrador: user?.email || "Desconhecido" 
-    });
-
-    // AUTO CHECK-IN: Se estava ausente, vira presente
-    if (!pessoa.check_in) {
-        await supabase.from('encontristas').update({ check_in: true }).eq('id', pessoa.id);
-        setPessoa({ ...pessoa, check_in: true }); 
+      })
+    );
+    
+    if (!result) {
+      setHistorico(backupHistorico);
+      setSaving(false);
+      alert('❌ Erro ao registrar administração. Tente novamente.');
+      return;
     }
     
-    setSaving(false); 
-    setIsAdministerModalOpen(false); 
-    carregarDados();
+    // AUTO CHECK-IN: Se estava ausente, vira presente (com rollback)
+    if (!pessoa.check_in) {
+      const backupPessoa = { ...pessoa };
+      setPessoa({ ...pessoa, check_in: true });
+      
+      const checkinResult = await safeQuery(async () =>
+        await supabase.from('encontristas').update({ check_in: true }).eq('id', pessoa.id)
+      );
+      
+      if (!checkinResult) {
+        setPessoa(backupPessoa);
+        // Reverte o histórico
+        await safeQuery(async () =>
+          await supabase.from('historico_administracao').delete().eq('prescricao_id', selectedPrescricao.id).eq('data_hora', dataHoraFixa)
+        );
+        setHistorico(backupHistorico);
+        setSaving(false);
+        alert('❌ Erro ao atualizar check-in. Tente novamente.');
+        return;
+      }
+    }
+    
+    setSaving(false);
+    setIsAdministerModalOpen(false);
+    await carregarDados();
+    alert('✅ Administração registrada com sucesso!');
+  };
+
+  const openDeleteModal = (id: number) => {
+    setMedicationToDelete(id);
   };
 
   return (
@@ -415,7 +563,7 @@ export default function EncontristaClient({
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         
-        {/* CARD DE PERFIL (COM ID VERDE E NO FLUXO NORMAL) */}
+        {/* CARD DE PERFIL */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 relative overflow-hidden">
            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-400 to-red-500 rounded-2xl flex items-center justify-center text-white shadow-orange-200 shadow-lg shrink-0">
@@ -502,7 +650,7 @@ export default function EncontristaClient({
                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                     <Pill className="text-orange-500" /> Medicações
                 </h2>
-                <button onClick={() => setIsModalOpen(true)} className="bg-orange-50 text-orange-700 hover:bg-orange-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
+                <button onClick={() => setIsModalOpen(true)} disabled={saving} className="bg-orange-50 text-orange-700 hover:bg-orange-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50">
                     <Plus size={18} /> Adicionar
                 </button>
             </div>
@@ -546,12 +694,13 @@ export default function EncontristaClient({
                                 <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 sm:border-none">
                                     <button 
                                         onClick={() => handleAdministrarClick(med)} 
-                                        className={`flex-1 sm:flex-none border px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold ${conflito ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}
+                                        disabled={saving}
+                                        className={`flex-1 sm:flex-none border px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bold disabled:opacity-50 ${conflito ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}
                                     >
                                         {conflito ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />} 
                                         {conflito ? 'Risco!' : 'Administrar'}
                                     </button>
-                                    <button onClick={() => openDeleteModal(med.id)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Excluir"><Trash2 size={20} /></button>
+                                    <button onClick={() => openDeleteModal(med.id)} disabled={saving} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50" title="Excluir"><Trash2 size={20} /></button>
                                 </div>
                             </div>
                         </div>
@@ -597,7 +746,7 @@ export default function EncontristaClient({
                                         </p>
                                     </div>
                                 </div>
-                                <button onClick={() => setHistoryToDelete(item.id)} className="ml-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16} /></button>
+                                <button onClick={() => setHistoryToDelete(item.id)} disabled={saving} className="ml-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"><Trash2 size={16} /></button>
                             </div>
                         </div>
                     );
@@ -606,7 +755,7 @@ export default function EncontristaClient({
         </div>
       </div>
 
-      {/* --- MODAIS (MANTIDOS IGUAIS) --- */}
+      {/* --- MODAIS --- */}
       {allergyWarning && (
         <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 text-center border-4 border-red-100">
@@ -620,7 +769,7 @@ export default function EncontristaClient({
                 </div>
                 <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">* Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong> O sistema não substitui a avaliação profissional.</p>
                 <div className="flex flex-col gap-3">
-                    <button onClick={allergyWarning.onConfirm} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2"><ThumbsUp size={18} /> Sim, estou ciente e assumo o risco</button>
+                    <button onClick={allergyWarning.onConfirm} disabled={saving} className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"><ThumbsUp size={18} /> Sim, estou ciente e assumo o risco</button>
                     <button onClick={() => setAllergyWarning(null)} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar Administração</button>
                 </div>
             </div>
@@ -635,7 +784,7 @@ export default function EncontristaClient({
                 <p className="text-red-500 text-sm mb-6">Isso removerá a prescrição e todo o histórico de administração.</p>
                 <div className="flex gap-3">
                     <button onClick={() => setMedicationToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
-                    <button onClick={confirmDeleteMedication} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Excluir</button>
+                    <button onClick={confirmDeleteMedication} disabled={saving} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all disabled:opacity-50">Excluir</button>
                 </div>
             </div>
         </div>
@@ -649,7 +798,7 @@ export default function EncontristaClient({
                 <p className="text-slate-500 text-sm mb-6">Você está prestes a apagar <strong>apenas este registro</strong> de administração. O medicamento continuará na lista.</p>
                 <div className="flex gap-3">
                     <button onClick={() => setHistoryToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
-                    <button onClick={confirmDeleteHistory} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all">Apagar Registro</button>
+                    <button onClick={confirmDeleteHistory} disabled={saving} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 transition-all disabled:opacity-50">Apagar Registro</button>
                 </div>
             </div>
         </div>
@@ -671,7 +820,7 @@ export default function EncontristaClient({
                     </div>
                     <div className="flex gap-3">
                         <button type="button" onClick={() => setIsAdministerModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
-                        <button type="submit" disabled={saving} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Confirmar'}</button>
+                        <button type="submit" disabled={saving} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin h-5 w-5"/> : 'Confirmar'}</button>
                     </div>
                 </form>
             </div>
