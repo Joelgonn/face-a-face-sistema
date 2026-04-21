@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Bot, Loader2, MessageCircle, Send, X } from 'lucide-react';
+import { Bot, Loader2, Send, X } from 'lucide-react';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -18,7 +18,7 @@ const initialMessages: ChatMessage[] = [
   {
     role: 'assistant',
     content:
-      'Oi! Posso ajudar a consultar presentes, alergias, responsaveis e medicamentos do evento. Ex: "quem esta com dose atrasada?"',
+      'Olá! Eu sou o Lucas, seu assistente virtual... Posso ajudar a consultar presentes, alergias, responsaveis e medicamentos nesse Face a Face. Ex: "quem esta com dose atrasada?"',
   },
 ];
 
@@ -77,7 +77,7 @@ export default function ChatbotWidget({ isOpen, onOpenChange }: ChatbotWidgetPro
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[70] sm:right-6 md:bottom-5">
+    <>
       {isOpen && (
         <div className="fixed inset-x-0 bottom-0 flex h-[58vh] max-h-[520px] min-h-[360px] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:right-6 sm:w-[420px] sm:rounded-2xl md:bottom-5">
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-900 px-4 py-3 text-white">
@@ -87,7 +87,7 @@ export default function ChatbotWidget({ isOpen, onOpenChange }: ChatbotWidgetPro
               </div>
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-black">Assistente Face a Face</h2>
-                <p className="truncate text-xs font-medium text-slate-300">Consulta rapida do evento</p>
+                <p className="truncate text-xs font-medium text-slate-300">Consulte os encontristas</p>
               </div>
             </div>
             <button
@@ -159,18 +159,6 @@ export default function ChatbotWidget({ isOpen, onOpenChange }: ChatbotWidgetPro
           </form>
         </div>
       )}
-
-      {!isOpen && (
-        <button
-          type="button"
-          onClick={() => onOpenChange(true)}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/30 transition hover:bg-orange-600 active:scale-95"
-          aria-label="Abrir chatbot"
-          title="Assistente"
-        >
-          <MessageCircle size={24} />
-        </button>
-      )}
-    </div>
+    </>
   );
 }

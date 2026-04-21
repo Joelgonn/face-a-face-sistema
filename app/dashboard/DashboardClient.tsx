@@ -9,7 +9,7 @@ import {
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, AlertTriangle, Shield,
   FileText, CheckCircle2, FileSpreadsheet, Activity, ChevronDown,
-  RefreshCw, RotateCcw, Cloud, Monitor, Smartphone
+  RefreshCw, RotateCcw, Cloud, Monitor, Smartphone, MessageCircle
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -40,7 +40,7 @@ async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
 
 // --- OFFLINE QUEUE (localStorage) ---
 const getQueue = () => {
-  if (typeof window === 'undefined') return []
+  if (typeof window === 'undefined') return[]
   return JSON.parse(localStorage.getItem('offlineQueue') || '[]')
 }
 
@@ -100,7 +100,7 @@ export default function DashboardClient({
   isAdminInitial 
 }: DashboardClientProps) {
   
-  const [encontristas, setEncontristas] = useState<EncontristaDashboard[]>(initialEncontristas);
+  const[encontristas, setEncontristas] = useState<EncontristaDashboard[]>(initialEncontristas);
   const [isAdmin] = useState(isAdminInitial);
   const [loading, setLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,18 +108,18 @@ export default function DashboardClient({
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
   const [importing, setImporting] = useState(false);
-  const [fileToImport, setFileToImport] = useState<File | null>(null);
-  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const[fileToImport, setFileToImport] = useState<File | null>(null);
+  const[isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  const [novoNome, setNovoNome] = useState('');
+  const[novoNome, setNovoNome] = useState('');
   const [novoResponsavel, setNovoResponsavel] = useState('');
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
   
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const[isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -130,7 +130,7 @@ export default function DashboardClient({
   const [modoEmergencia, setModoEmergencia] = useState(false);
   
   // --- ESTADO DE CONEXÃO ---
-  const [isOnline, setIsOnline] = useState(true);
+  const[isOnline, setIsOnline] = useState(true);
   
   // --- CONTADOR DA FILA OFFLINE ---
   const [queueCount, setQueueCount] = useState(0);
@@ -139,7 +139,7 @@ export default function DashboardClient({
   const [showQueue, setShowQueue] = useState(false);
   
   // --- MODO SIMPLES (ATIVADO POR PADRÃO PARA EVENTO) ---
-  const [modoSimples, setModoSimples] = useState(true);
+  const[modoSimples, setModoSimples] = useState(true);
   
   // --- MENU MOBILE ---
   const [openMenu, setOpenMenu] = useState(false);
@@ -155,11 +155,11 @@ export default function DashboardClient({
   const [chatbotOpen, setChatbotOpen] = useState(false);
 
   // --- CONTROLE DE INSTALAÇÃO DO PWA ---
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
+  const[deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const[showInstallButton, setShowInstallButton] = useState(false);
 
   // --- TRANSITION PARA EVITAR TRAVAR UI ---
-  const [isPending, startTransition] = useTransition();
+  const[isPending, startTransition] = useTransition();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -169,12 +169,12 @@ export default function DashboardClient({
   const updateQueueCount = useCallback(() => {
     const q = getQueue()
     setQueueCount(q.length)
-  }, []);
+  },[]);
 
   const showToast = useCallback((type: 'success' | 'error' | 'warning', title: string, message: string) => {
     setToast({ type, title, message });
     setTimeout(() => setToast(null), 4000); 
-  }, []);
+  },[]);
 
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
@@ -204,7 +204,7 @@ export default function DashboardClient({
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
     };
-  }, []);
+  },[]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -223,7 +223,7 @@ export default function DashboardClient({
     startTransition(() => {
       setModoSimples(prev => !prev);
     });
-  }, []);
+  },[]);
 
   // --- BUSCAR ENCONTRISTAS COM SAFE QUERY ---
   const buscarEncontristas = useCallback(async () => {
@@ -237,7 +237,7 @@ export default function DashboardClient({
     });
 
     if (result?.data) {
-      setEncontristas((result.data as unknown) as EncontristaDashboard[] || []);
+      setEncontristas((result.data as unknown) as EncontristaDashboard[] ||[]);
     }
 
     setLoading(false);
@@ -251,7 +251,7 @@ export default function DashboardClient({
       return
     }
 
-    const novaFila: OfflineQueueItem[] = []
+    const novaFila: OfflineQueueItem[] =[]
     let sucessos = 0
 
     showToast('warning', 'Sincronizando...', `${queue.length} itens pendentes`)
@@ -290,7 +290,7 @@ export default function DashboardClient({
     } else {
       showToast('warning', 'Sincronização parcial', `${novaFila.length} itens ainda pendentes`)
     }
-  }, [supabase, buscarEncontristas, showToast, updateQueueCount])
+  },[supabase, buscarEncontristas, showToast, updateQueueCount])
 
   // --- DETECTAR ONLINE/OFFLINE ---
   useEffect(() => {
@@ -314,7 +314,7 @@ export default function DashboardClient({
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [syncOfflineData, updateQueueCount, showToast])
+  },[syncOfflineData, updateQueueCount, showToast])
 
   // --- AUTO-RETRY A CADA 30 SEGUNDOS ---
   useEffect(() => {
@@ -382,7 +382,7 @@ export default function DashboardClient({
       const dataBase = ultimoRegistro?.data_hora 
         ? new Date(new Date(ultimoRegistro.data_hora as string).getTime() + intervaloHoras * 60 * 60 * 1000)
         : (() => {
-            const [hora, minuto] = med.horario_inicial.split(':').map(Number);
+            const[hora, minuto] = med.horario_inicial.split(':').map(Number);
             const hoje = new Date();
             return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), hora, minuto);
           })();
@@ -396,7 +396,7 @@ export default function DashboardClient({
     if (statusGeral === 1) return { cor: 'bg-rose-100 text-rose-800 border-rose-200', bordaL: 'border-l-rose-500', texto: 'Atrasado', prioridade: 3, icone: <AlertTriangle size={12}/> };
     if (statusGeral === 2) return { cor: 'bg-amber-100 text-amber-800 border-amber-200', bordaL: 'border-l-amber-500', texto: 'Atenção', prioridade: 2, icone: <Clock size={12}/> };
     return { cor: 'bg-emerald-100 text-emerald-800 border-emerald-200', bordaL: 'border-l-emerald-500', texto: 'Em Dia', prioridade: 1, icone: <CheckCircle2 size={12}/> };
-  }, []);
+  },[]);
 
   // --- FILTRO MEMOIZADO ---
   const filtered = useMemo(() => {
@@ -419,7 +419,7 @@ export default function DashboardClient({
       map.set(pessoa.id, getStatusPessoa(pessoa));
     }
     return map;
-  }, [filtered, getStatusPessoa]);
+  },[filtered, getStatusPessoa]);
 
   // --- SORTED MEMOIZADO COM USO DO MAPA DE STATUS ---
   const sorted = useMemo(() => {
@@ -598,7 +598,7 @@ export default function DashboardClient({
           observacoes: string | null;
           responsavel: string | null;
           check_in: boolean;
-        }[] = [];
+        }[] =[];
         
         for (const parts of results.data as string[][]) {
           if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {
@@ -1028,24 +1028,35 @@ export default function DashboardClient({
 
       </main>
 
-      {/* FAB EXPANDIDO */}
+      {/* FAB DE AÇÕES */}
       {!chatbotOpen && (
-      <div className="fixed bottom-24 right-6 z-50 md:hidden">
+      <div className="fixed bottom-6 right-6 z-50">
         
         <AnimatePresence>
           {fabOpen && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="flex flex-col items-end gap-3 mb-3"
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+              className="flex flex-col items-end gap-3 mb-4"
             >
+              <button
+                onClick={() => {
+                  setChatbotOpen(true)
+                  setFabOpen(false)
+                }}
+                className="bg-orange-600 text-white shadow-xl shadow-orange-600/25 px-5 py-3 rounded-2xl font-black flex items-center gap-2 text-sm active:scale-95 transition-all"
+              >
+                <MessageCircle size={18} />
+                Chat
+              </button>
+
               <button
                 onClick={() => {
                   setIsModalOpen(true)
                   setFabOpen(false)
                 }}
-                className="bg-white shadow-xl px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-slate-700 text-sm"
+                className="bg-white shadow-xl px-5 py-3 rounded-2xl font-black flex items-center gap-2 text-slate-700 text-sm active:scale-95 transition-all"
               >
                 <Plus size={18} className="text-orange-500" />
                 Novo Paciente
@@ -1086,10 +1097,10 @@ export default function DashboardClient({
             setChatbotOpen(false)
             setFabOpen(!fabOpen)
           }}
-          className="w-14 h-14 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all"
+          className="w-16 h-16 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl shadow-orange-600/30 flex items-center justify-center active:scale-95 transition-all"
           whileTap={{ scale: 0.9 }}
         >
-          {fabOpen ? <X size={24} /> : <Plus size={28} />}
+          {fabOpen ? <X size={26} /> : <Plus size={30} />}
         </motion.button>
 
       </div>
