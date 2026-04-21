@@ -146,6 +146,7 @@ export default function DashboardClient({
   
   // --- FEEDBACK VISUAL (FLASH VERDE) ---
   const [flashId, setFlashId] = useState<number | null>(null);
+  const [swipedCardId, setSwipedCardId] = useState<number | null>(null);
   
   // --- FAB EXPANDIDO ---
   const [fabOpen, setFabOpen] = useState(false);
@@ -469,6 +470,7 @@ export default function DashboardClient({
       
       setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: novoStatus } : p));
       setCheckInTarget(null);
+      setSwipedCardId(null);
       showToast('warning', 'Offline', 'Check-in salvo localmente. Será sincronizado quando a internet voltar.')
       return
     }
@@ -476,6 +478,7 @@ export default function DashboardClient({
     const backup = [...encontristas];
     setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: novoStatus } : p));
     setCheckInTarget(null);
+    setSwipedCardId(null);
     
     const { error } = await supabase.from('encontristas').update({ check_in: novoStatus }).eq('id', id);
     
@@ -483,6 +486,11 @@ export default function DashboardClient({
       setEncontristas(backup);
       showToast('error', 'Erro de conexão', 'Clique em "Recarregar Sistema"');
     }
+  };
+
+  const cancelCheckIn = () => {
+    setCheckInTarget(null);
+    setSwipedCardId(null);
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
@@ -714,7 +722,9 @@ export default function DashboardClient({
             <div className={modoSimples ? 'relative md:hidden' : 'relative'}>
                 <button
                   onClick={() => setOpenMenu(!openMenu)}
-                  className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+                  className="p-2.5 bg-orange-600 text-white rounded-xl shadow-lg shadow-orange-600/25 hover:bg-orange-700 transition-colors"
+                  aria-label="Abrir menu"
+                  title="Menu"
                 >
                   ☰
                 </button>
@@ -868,15 +878,26 @@ export default function DashboardClient({
                 drag="x"
                 dragConstraints={{ left: -80, right: 0 }}
                 dragElastic={0.7}
+                animate={{ x: swipedCardId === pessoa.id ? -80 : 0 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                 onDragEnd={(_event, info) => {
                   if (info.offset.x < -60) {
+                    setSwipedCardId(pessoa.id)
                     handleSwipeCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)
+                  } else {
+                    setSwipedCardId(null)
                   }
                 }}
                 className="relative"
               >
-                <div className="absolute right-0 top-0 h-full w-20 flex items-center justify-center bg-emerald-500 rounded-2xl shadow-lg">
-                  <CheckCircle2 size={28} className="text-white" />
+                <div className={`absolute right-0 top-0 h-full w-20 flex items-center justify-center rounded-2xl shadow-lg transition-colors ${
+                  pessoa.check_in ? 'bg-emerald-500' : 'bg-slate-200'
+                }`}>
+                  {pessoa.check_in ? (
+                    <CheckCircle2 size={28} className="text-white" />
+                  ) : (
+                    <UserX size={28} className="text-slate-500" />
+                  )}
                 </div>
                 
                 <div className={`
@@ -1228,7 +1249,7 @@ export default function DashboardClient({
                 <h2 className="text-2xl font-black text-slate-800 mb-2">{checkInTarget.status ? 'Remover Presença?' : 'Confirmar Presença?'}</h2>
                 <p className="text-slate-500 text-lg mb-8 font-bold">{checkInTarget.nome}</p>
                 <div className="flex gap-3">
-                    <button onClick={() => setCheckInTarget(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Cancelar</button>
+                    <button onClick={cancelCheckIn} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Cancelar</button>
                     <button onClick={confirmCheckIn} className={`flex-1 py-4 rounded-2xl font-black text-white shadow-lg ${checkInTarget.status ? 'bg-rose-500 shadow-rose-500/30' : 'bg-emerald-600 shadow-emerald-600/30'}`}>Confirmar</button>
                 </div>
             </div>
