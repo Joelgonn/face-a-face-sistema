@@ -150,6 +150,9 @@ export default function DashboardClient({
   // --- FAB EXPANDIDO ---
   const [fabOpen, setFabOpen] = useState(false);
 
+  // --- CHATBOT ---
+  const [chatbotOpen, setChatbotOpen] = useState(false);
+
   // --- CONTROLE DE INSTALAÇÃO DO PWA ---
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
@@ -662,10 +665,11 @@ export default function DashboardClient({
               >
                 📱 Instalar App
               </button>
+
             )}
 
             {/* BOTÃO TOGGLE MODO SIMPLES COM TRANSITION */}
-            <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
               <button
                 type="button"
                 onClick={() => {
@@ -707,8 +711,7 @@ export default function DashboardClient({
               </div>
             )}
 
-            {!modoSimples && (
-              <div className="relative">
+            <div className={modoSimples ? 'relative md:hidden' : 'relative'}>
                 <button
                   onClick={() => setOpenMenu(!openMenu)}
                   className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
@@ -775,8 +778,6 @@ export default function DashboardClient({
                   )}
                 </AnimatePresence>
               </div>
-            )}
-
             <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors">
                 <LogOut size={22}/>
             </button>
@@ -1007,7 +1008,8 @@ export default function DashboardClient({
       </main>
 
       {/* FAB EXPANDIDO */}
-      <div className="fixed bottom-6 right-6 z-50 md:hidden">
+      {!chatbotOpen && (
+      <div className="fixed bottom-24 right-6 z-50 md:hidden">
         
         <AnimatePresence>
           {fabOpen && (
@@ -1059,7 +1061,10 @@ export default function DashboardClient({
         </AnimatePresence>
 
         <motion.button
-          onClick={() => setFabOpen(!fabOpen)}
+          onClick={() => {
+            setChatbotOpen(false)
+            setFabOpen(!fabOpen)
+          }}
           className="w-14 h-14 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all"
           whileTap={{ scale: 0.9 }}
         >
@@ -1067,6 +1072,7 @@ export default function DashboardClient({
         </motion.button>
 
       </div>
+      )}
 
       {/* MODAIS (mantidos) */}
       {showQueue && !modoSimples && (
@@ -1249,7 +1255,13 @@ export default function DashboardClient({
         </div>
       )}
 
-      <ChatbotWidget />
+      <ChatbotWidget
+        isOpen={chatbotOpen}
+        onOpenChange={(isOpen) => {
+          setChatbotOpen(isOpen)
+          if (isOpen) setFabOpen(false)
+        }}
+      />
     </div>
   );
 }

@@ -9,6 +9,11 @@ type ChatMessage = {
   content: string;
 };
 
+type ChatbotWidgetProps = {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+};
+
 const initialMessages: ChatMessage[] = [
   {
     role: 'assistant',
@@ -17,8 +22,7 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
-export default function ChatbotWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+export default function ChatbotWidget({ isOpen, onOpenChange }: ChatbotWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,7 +79,7 @@ export default function ChatbotWidget() {
   return (
     <div className="fixed bottom-6 right-6 z-[70] sm:right-6 md:bottom-5">
       {isOpen && (
-        <div className="fixed inset-x-0 bottom-24 flex h-[58vh] max-h-[520px] min-h-[360px] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:right-6 sm:w-[420px] sm:rounded-2xl md:bottom-5">
+        <div className="fixed inset-x-0 bottom-0 flex h-[58vh] max-h-[520px] min-h-[360px] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:right-6 sm:w-[420px] sm:rounded-2xl md:bottom-5">
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-900 px-4 py-3 text-white">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500">
@@ -88,7 +92,7 @@ export default function ChatbotWidget() {
             </div>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={() => onOpenChange(false)}
               className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Fechar chatbot"
               title="Fechar"
@@ -159,7 +163,7 @@ export default function ChatbotWidget() {
       {!isOpen && (
         <button
           type="button"
-          onClick={() => setIsOpen(true)}
+          onClick={() => onOpenChange(true)}
           className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/30 transition hover:bg-orange-600 active:scale-95"
           aria-label="Abrir chatbot"
           title="Assistente"
