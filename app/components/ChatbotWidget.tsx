@@ -18,7 +18,7 @@ const initialMessages: ChatMessage[] = [
   {
     role: 'assistant',
     content:
-      'Olá! Eu sou o Lucas, seu assistente virtual... Posso ajudar a consultar presentes, alergias, responsaveis e medicamentos nesse Face a Face. Ex: "quem esta com dose atrasada?"',
+      'Olá! Eu sou o Lucas, seu assistente virtual... Posso te ajudar a consultar encontristas, alergias, responsaveis e medicamentos nesse Face a Face. Ex: "quem esta com dose atrasada?"',
   },
 ];
 
