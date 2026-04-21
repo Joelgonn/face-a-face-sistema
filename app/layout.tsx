@@ -58,6 +58,16 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
+                const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+                if (isLocalDev) {
+                  navigator.serviceWorker.getRegistrations()
+                    .then(registrations => registrations.forEach(reg => reg.unregister()));
+
+                  if ('caches' in window) {
+                    caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
+                  }
+                } else {
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches;
                 console.log('[PWA] Modo:', isPWA ? 'instalado' : 'navegador');
                 
@@ -83,6 +93,7 @@ export default function RootLayout({
                     window.location.reload();
                   });
                 });
+                }
               }
             `,
           }}

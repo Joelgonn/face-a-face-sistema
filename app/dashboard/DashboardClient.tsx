@@ -9,12 +9,13 @@ import {
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, AlertTriangle, Shield,
   FileText, CheckCircle2, FileSpreadsheet, Activity, ChevronDown,
-  RefreshCw, RotateCcw, Cloud
+  RefreshCw, RotateCcw, Cloud, Monitor, Smartphone
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import Papa from 'papaparse'; 
+import ChatbotWidget from '@/app/components/ChatbotWidget';
 
 // --- FUNÇÃO SAFE QUERY (VERSÃO SEM ANY) ---
 async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
@@ -396,10 +397,14 @@ export default function DashboardClient({
   // --- FILTRO MEMOIZADO ---
   const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    if (!term) return encontristas;
+
     return encontristas.filter(p => {
       const nome = p.nome || '';
       const responsavel = p.responsavel || '';
-      return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || (term && p.id === Number(term));
+      const id = String(p.id);
+
+      return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || id.includes(term);
     });
   }, [encontristas, searchTerm]);
 
@@ -660,13 +665,41 @@ export default function DashboardClient({
             )}
 
             {/* BOTÃO TOGGLE MODO SIMPLES COM TRANSITION */}
-            <button 
-              onClick={toggleModoSimples}
-              disabled={isPending}
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
-            >
-              {modoSimples ? '📱 Simples' : '🖥️ Completo'}
-            </button>
+            <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!modoSimples) toggleModoSimples()
+                }}
+                disabled={isPending}
+                title="Modo simples"
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${
+                  modoSimples
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+              >
+                <Smartphone size={16} />
+                <span className="hidden sm:inline">Simples</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (modoSimples) toggleModoSimples()
+                }}
+                disabled={isPending}
+                title="Modo completo"
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${
+                  !modoSimples
+                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+              >
+                <Monitor size={16} />
+                <span className="hidden sm:inline">Completo</span>
+              </button>
+            </div>
 
             {!modoSimples && (
               <div className={`hidden sm:block px-3 py-1.5 rounded-full text-xs font-bold ${connectionStatus.bg}`}>
@@ -804,7 +837,7 @@ export default function DashboardClient({
             <input 
               ref={inputRef}
               type="text" 
-              placeholder={modoSimples ? "🔍 Digite o nome e toque para marcar presença..." : "Buscar por paciente, responsável ou ID..."}
+              placeholder={modoSimples ? "Buscar por ID ou nome..." : "Buscar por paciente, responsável ou ID..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-orange-500/10 font-medium text-slate-700 shadow-sm transition-all text-base"
@@ -825,7 +858,7 @@ export default function DashboardClient({
         </div>
 
         {/* LISTA MOBILE COM STATUS DO MAPA CACHEADO */}
-        <div className="md:hidden space-y-4">
+        <div className={modoSimples ? 'space-y-4' : 'md:hidden space-y-4'}>
           {loading ? <div className="text-center py-12 text-slate-400"><Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-12 text-slate-400 font-bold">Nenhum paciente encontrado.</div> : sorted.map((pessoa) => {
              const status = statusMap.get(pessoa.id);
              return (
@@ -869,7 +902,16 @@ export default function DashboardClient({
                                   {pessoa.responsavel && <p className="text-xs text-slate-500 font-medium mt-2 truncate">Resp: {pessoa.responsavel}</p>}
                               </div>
                           </div>
-                          <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 shadow-md border-2 transition-all active:scale-95 ${pessoa.check_in ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                          <button
+                            onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)}
+                            title={pessoa.check_in ? 'Presente' : 'Ausente'}
+                            aria-label={pessoa.check_in ? 'Presente' : 'Ausente'}
+                            className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 border-2 transition-all active:scale-95 ${
+                              pessoa.check_in
+                                ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/30'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 shadow-sm hover:bg-slate-200 hover:text-slate-600'
+                            }`}
+                          >
                               {pessoa.check_in ? <UserCheck size={28}/> : <UserX size={28}/>}
                           </button>
                       </div>
@@ -1206,6 +1248,8 @@ export default function DashboardClient({
           </div>
         </div>
       )}
+
+      <ChatbotWidget />
     </div>
   );
 }

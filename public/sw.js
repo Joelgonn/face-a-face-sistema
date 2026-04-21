@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'face-static-v1'
-const DYNAMIC_CACHE = 'face-dynamic-v1'
+const STATIC_CACHE = 'face-static-v2'
+const DYNAMIC_CACHE = 'face-dynamic-v2'
 const OFFLINE_URL = '/offline.html'
 const OFFLINE_IMAGE = '/offline-image.png'
 const MAX_CACHE_ITEMS = 50
@@ -59,6 +59,13 @@ self.addEventListener('activate', (event) => {
   
   event.waitUntil(
     (async () => {
+      if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
+        const cacheNames = await caches.keys()
+        await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)))
+        await self.registration.unregister()
+        return
+      }
+
       const cacheNames = await caches.keys()
       await Promise.all(
         cacheNames.map(cacheName => {
@@ -75,6 +82,8 @@ self.addEventListener('activate', (event) => {
 
 // --- FETCH COM ABORTCONTROLLER E FALLBACK ROBUSTO ---
 self.addEventListener('fetch', (event) => {
+  if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') return
+
   // Só processa requisições da própria origem
   if (!event.request.url.startsWith(self.location.origin)) return
   
