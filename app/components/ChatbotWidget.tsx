@@ -73,9 +73,9 @@ export default function ChatbotWidget() {
   };
 
   return (
-    <div className="fixed bottom-24 right-4 z-[70] sm:right-6 md:bottom-5">
+    <div className="fixed bottom-6 right-6 z-[70] sm:right-6 md:bottom-5">
       {isOpen && (
-        <div className="mb-3 flex h-[min(620px,calc(100vh-7rem))] w-[calc(100vw-2rem)] max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:w-[400px]">
+        <div className="fixed inset-x-0 bottom-24 flex h-[58vh] max-h-[520px] min-h-[360px] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:right-6 sm:w-[420px] sm:rounded-2xl md:bottom-5">
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-900 px-4 py-3 text-white">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500">
@@ -156,15 +156,17 @@ export default function ChatbotWidget() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/30 transition hover:bg-orange-600 active:scale-95"
-        aria-label="Abrir chatbot"
-        title="Assistente"
-      >
-        {isOpen ? <X size={24} /> : <MessageCircle size={24} />}
-      </button>
+      {!isOpen && (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/30 transition hover:bg-orange-600 active:scale-95"
+          aria-label="Abrir chatbot"
+          title="Assistente"
+        >
+          <MessageCircle size={24} />
+        </button>
+      )}
     </div>
   );
 }
