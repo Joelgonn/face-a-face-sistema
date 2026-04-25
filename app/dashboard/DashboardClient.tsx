@@ -25,7 +25,7 @@ import { criarEncontrista } from '@/application/use-cases/criarEncontrista';
 import { syncOffline, QueueItem } from '@/application/use-cases/syncOffline';
 
 // --- EASING PREMIUM (iOS-LIKE) ---
-const premiumEasing: [number, number, number, number] = [0.22, 1, 0.36, 1]
+const premiumEasing: [number, number, number, number] =[0.22, 1, 0.36, 1]
 const fastTransition: Transition = { duration: 0.18, ease: premiumEasing }
 const springTransition: Transition = { type: 'spring', stiffness: 350, damping: 28 }
 
@@ -51,7 +51,7 @@ async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
 
 // --- OFFLINE QUEUE (localStorage) ---
 const getQueue = () => {
-  if (typeof window === 'undefined') return []
+  if (typeof window === 'undefined') return[]
   return JSON.parse(localStorage.getItem('offlineQueue') || '[]')
 }
 
@@ -114,12 +114,12 @@ export default function DashboardClient({
   const [isAdmin] = useState(isAdminInitial);
   const [loading, setLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
-  const [showStats, setShowStats] = useState(false);
+  const[showStats, setShowStats] = useState(false);
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
   const [importing, setImporting] = useState(false);
-  const [fileToImport, setFileToImport] = useState<File | null>(null);
-  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const[fileToImport, setFileToImport] = useState<File | null>(null);
+  const[isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,22 +130,22 @@ export default function DashboardClient({
   const [novasObservacoes, setNovasObservacoes] = useState('');
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [resetPassword, setResetPassword] = useState('');
+  const[resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
+  const[checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<EncontristaDashboard | null>(null);
 
   const [modoEmergencia, setModoEmergencia] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const[isOnline, setIsOnline] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
-  const [modoSimples, setModoSimples] = useState(true);
+  const[modoSimples, setModoSimples] = useState(true);
   const [openMenu, setOpenMenu] = useState(false);
   const [flashId, setFlashId] = useState<number | null>(null);
   const [fabOpen, setFabOpen] = useState(false);
-  const [chatbotOpen, setChatbotOpen] = useState(false);
+  const[chatbotOpen, setChatbotOpen] = useState(false);
   
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
@@ -159,12 +159,12 @@ export default function DashboardClient({
   const updateQueueCount = useCallback(() => {
     const q = getQueue()
     setQueueCount(q.length)
-  }, []);
+  },[]);
 
   const showToast = useCallback((type: 'success' | 'error' | 'warning', title: string, message: string) => {
     setToast({ type, title, message });
     setTimeout(() => setToast(null), 4000); 
-  }, []);
+  },[]);
 
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
@@ -186,7 +186,7 @@ export default function DashboardClient({
 
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+  },[]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -201,7 +201,7 @@ export default function DashboardClient({
     startTransition(() => {
       setModoSimples(prev => !prev);
     });
-  }, []);
+  },[]);
 
   // --- BUSCAR ENCONTRISTAS COM REPOSITORY ---
   const buscarEncontristas = useCallback(async () => {
@@ -282,7 +282,7 @@ export default function DashboardClient({
               status.icone === 'emdia' ? <CheckCircle2 size={16}/> :
               <Activity size={16}/>
     }
-  }, []);
+  },[]);
 
    // --- SINCRONIZAÇÃO OFFLINE ---
   const syncOfflineData = useCallback(async () => {
@@ -315,7 +315,7 @@ export default function DashboardClient({
     } else {
       showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`)
     }
-  }, [buscarEncontristas, showToast, updateQueueCount])
+  },[buscarEncontristas, showToast, updateQueueCount])
 
   useEffect(() => {
     setIsOnline(navigator.onLine)
@@ -367,16 +367,55 @@ export default function DashboardClient({
     window.location.reload()
   }
 
+  // 🔥 SMART SEARCH + FALLBACK INTELIGENTE
   const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    
     if (!term) return encontristas;
+
+    const isNumeric = /^\d+$/.test(term);
+
+    if (isNumeric) {
+      // Prioridade 1: Busca exata por ID
+      const exact = encontristas.filter(p => String(p.id) === term);
+      if (exact.length > 0) return exact;
+
+      // Fallback Inteligente: Se não encontrou o ID exato, busca por IDs que contenham aquele número
+      return encontristas.filter(p => String(p.id).includes(term));
+    }
+
+    // Fallback: Busca textual por nome ou responsável
     return encontristas.filter(p => {
       const nome = p.nome || '';
       const responsavel = p.responsavel || '';
-      const id = String(p.id);
-      return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || id.includes(term);
+
+      return (
+        nome.toLowerCase().includes(term) ||
+        responsavel.toLowerCase().includes(term)
+      );
     });
+
   }, [encontristas, searchTerm]);
+
+  // 🔥 EFEITO PARA HIGHLIGHT (PISCAR O CARD AO ENCONTRAR ID EXATO NA BUSCA)
+  useEffect(() => {
+    const term = searchTerm.trim();
+    const isNumeric = /^\d+$/.test(term);
+    
+    if (isNumeric && term) {
+      const exact = encontristas.find(p => String(p.id) === term);
+      if (exact) {
+        setFlashId(exact.id);
+        
+        // Remove o highlight após 800ms
+        const timeout = setTimeout(() => {
+          setFlashId(null);
+        }, 800);
+        
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [searchTerm, encontristas]);
 
   const statusMap = useMemo(() => {
     const map = new Map();
@@ -551,7 +590,7 @@ export default function DashboardClient({
           observacoes: string | null;
           responsavel: string | null;
           check_in: boolean;
-        }[] = [];
+        }[] =[];
         
         for (const parts of results.data as string[][]) {
           if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {

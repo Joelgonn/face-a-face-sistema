@@ -50,15 +50,32 @@ export function PatientCard({
   const x = useMotionValue(0)
   
   const bgColor = useTransform(
-    x,
-    [0, 100],
-    ['rgba(255,255,255,1)', 'rgba(16,185,129,0.15)']
+    x,[0, 100],['rgba(255,255,255,1)', 'rgba(16,185,129,0.15)']
   )
 
   const handleSwipeComplete = () => {
     onCheckIn(id, checkIn, nome)
     x.set(0)
   }
+
+  // --- LÓGICA DE CORES CUSTOMIZADAS (Ajuste Fino de UX) ---
+  const statusTextoLp = status?.texto?.toLowerCase() || ''
+  const isAtrasado = statusTextoLp.includes('atrasad')
+  const isEmDia = statusTextoLp.includes('em dia')
+  const isSemMeds = statusTextoLp.includes('sem meds')
+
+  // Borda esquerda grossa: Verde (em dia), Vermelha (atrasado) ou padrão
+  let leftBorderClass = status?.bordaL || 'border-l-slate-300'
+  if (isAtrasado) {
+    leftBorderClass = 'border-l-rose-500'
+  } else if (isEmDia) {
+    leftBorderClass = 'border-l-emerald-500'
+  }
+
+  // Cor da Pill (badge de status): Laranja para "Em dia" e "Sem meds" 
+  const customPillColor = (isEmDia || isSemMeds) 
+    ? 'bg-orange-50 text-orange-600 border border-orange-200'
+    : status?.cor || 'bg-slate-100 text-slate-600'
 
   return (
     <motion.div
@@ -77,7 +94,9 @@ export function PatientCard({
       transition={springTransition}
       whileTap={{ scale: 0.96 }}
       className={`
-        relative rounded-2xl border-l-8 ${status?.bordaL || 'border-l-slate-300'}
+        relative rounded-2xl 
+        border-l-8 ${leftBorderClass}
+        border-y border-r border-slate-200
         bg-white/90 backdrop-blur-sm
         shadow-sm hover:shadow-md 
         transition-shadow duration-200
@@ -99,7 +118,7 @@ export function PatientCard({
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.12, delay: 0.03, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.12, delay: 0.03, ease:[0.22, 1, 0.36, 1] }}
               className={`
                 w-10 h-10 rounded-xl flex items-center justify-center shrink-0
                 transition-all duration-200
@@ -113,20 +132,23 @@ export function PatientCard({
             </motion.div>
 
             {/* TEXTO */}
-            <div className="flex flex-col min-w-0">
-              {/* NOME (DOMINANTE) */}
+            <div className="flex flex-col min-w-0 justify-center">
+              {/* NOME (DOMINANTE) COM ID */}
               <motion.h3 
                 layoutId={`card-title-${id}`}
-                className="text-base md:text-lg font-bold tracking-tight text-slate-800 truncate"
+                className="text-base md:text-lg font-bold tracking-tight text-slate-800 flex items-center gap-2 min-w-0"
               >
-                {nome}
+                <span className="text-[11px] font-black text-orange-500 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded-md shrink-0">
+                  #{id}
+                </span>
+                <span className="truncate">{nome}</span>
               </motion.h3>
               
               {/* STATUS (SECUNDÁRIO) */}
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
                 <span className={`
                   text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full
-                  ${status?.cor || 'bg-slate-100 text-slate-600'}
+                  ${customPillColor}
                 `}>
                   {status?.texto}
                 </span>
@@ -171,7 +193,7 @@ export function PatientCard({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.18, ease:[0.22, 1, 0.36, 1] }}
             className="mt-3 flex items-start gap-2 bg-rose-50/80 p-2.5 rounded-xl border border-rose-100"
           >
             <AlertCircle size={14} className="text-rose-500 shrink-0 mt-0.5" />
