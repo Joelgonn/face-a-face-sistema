@@ -7,7 +7,7 @@ export type DeletarHistoricoParams = {
 }
 
 export type DeletarHistoricoDeps = {
-  deleteRemote: (historicoId: number) => Promise<{ error?: unknown }>
+  deleteRemote: (historicoId: number) => Promise<{ data: null; error: unknown }>
   addToQueue: (item: unknown) => void
 }
 
@@ -49,7 +49,9 @@ export async function deletarHistorico(
   // --- ONLINE ---
   const { error } = await deps.deleteRemote(historicoId)
 
-  if (error) {
+  // 🔥 CORREÇÃO CRÍTICA: verifica se erro é estritamente diferente de null
+  if (error !== null && error !== undefined) {
+    console.error('[deletarHistorico] Erro real ao deletar histórico:', error)
     return {
       success: false,
       error: 'Erro ao excluir registro do histórico'

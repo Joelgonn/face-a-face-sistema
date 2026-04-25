@@ -7,8 +7,8 @@ export type DeletarMedicacaoParams = {
 }
 
 export type DeletarMedicacaoDeps = {
-  deleteHistoricoRemote: (medicacaoId: number) => Promise<{ error?: unknown }>
-  deletePrescricaoRemote: (medicacaoId: number) => Promise<{ error?: unknown }>
+  deleteHistoricoRemote: (medicacaoId: number) => Promise<{ data: null; error: unknown }>
+  deletePrescricaoRemote: (medicacaoId: number) => Promise<{ data: null; error: unknown }>
   addToQueue: (item: unknown) => void
 }
 
@@ -50,7 +50,9 @@ export async function deletarMedicacao(
   // --- ONLINE: DELETAR HISTÓRICO PRIMEIRO ---
   const { error: historicoError } = await deps.deleteHistoricoRemote(medicacaoId)
 
-  if (historicoError) {
+  // 🔥 CORREÇÃO CRÍTICA: verifica se erro é estritamente diferente de null
+  if (historicoError !== null && historicoError !== undefined) {
+    console.error('[deletarMedicacao] Erro real ao deletar histórico:', historicoError)
     return {
       success: false,
       error: 'Erro ao excluir histórico da medicação'
@@ -60,7 +62,9 @@ export async function deletarMedicacao(
   // --- DELETAR PRESCRIÇÃO ---
   const { error: prescricaoError } = await deps.deletePrescricaoRemote(medicacaoId)
 
-  if (prescricaoError) {
+  // 🔥 CORREÇÃO CRÍTICA: verifica se erro é estritamente diferente de null
+  if (prescricaoError !== null && prescricaoError !== undefined) {
+    console.error('[deletarMedicacao] Erro real ao deletar prescrição:', prescricaoError)
     return {
       success: false,
       error: 'Erro ao excluir medicação'
