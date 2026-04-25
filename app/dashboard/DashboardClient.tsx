@@ -59,9 +59,19 @@ const saveQueue = (queue: unknown[]) => {
   localStorage.setItem('offlineQueue', JSON.stringify(queue))
 }
 
+// 🔥 Queue com ID único e timestamp
 const addToQueue = (item: unknown) => {
   const queue = getQueue()
-  queue.push(item)
+  
+  // Garante que item seja um objeto antes de fazer spread
+  const itemObj = typeof item === 'object' && item !== null ? item as Record<string, unknown> : {}
+  
+  queue.push({
+    ...itemObj,
+    _id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    createdAt: Date.now()
+  })
+  
   saveQueue(queue)
 }
 
@@ -88,6 +98,8 @@ interface DashboardClientProps {
 }
 
 interface OfflineQueueItem {
+  _id?: string;
+  createdAt?: number;
   tipo: 'novo' | 'checkin';
   dados?: {
     nome: string;
@@ -103,6 +115,33 @@ interface OfflineQueueItem {
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+// 🔥 Helper para validar e converter objeto do Supabase para EncontristaDashboard
+function toEncontristaDashboard(row: unknown): EncontristaDashboard | null {
+  if (!row || typeof row !== 'object') return null
+  
+  const typedRow = row as Record<string, unknown>
+  
+  // Valida campos obrigatórios
+  if (typeof typedRow.id !== 'number') return null
+  if (typeof typedRow.nome !== 'string') return null
+  
+  // Garante que prescricoes existe (pode vir vazio do Supabase)
+  const prescricoes = Array.isArray(typedRow.prescricoes) 
+    ? typedRow.prescricoes as EncontristaDashboard['prescricoes']
+    : []
+  
+  return {
+    id: typedRow.id,
+    nome: typedRow.nome,
+    responsavel: typedRow.responsavel as string | null || null,
+    alergias: typedRow.alergias as string | null || null,
+    observacoes: typedRow.observacoes as string | null || null,
+    check_in: typedRow.check_in === true,
+    created_at: typedRow.created_at as string || new Date().toISOString(),
+    prescricoes
+  }
 }
 
 export default function DashboardClient({ 
@@ -151,10 +190,27 @@ export default function DashboardClient({
   const [showInstallButton, setShowInstallButton] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  // 🔥 useRefs para controle avançado
+  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // ============================================================
+  // 🔥 STATS REATIVOS (derivado de encontristas)
+  // ============================================================
+  const stats = useMemo(() => {
+    const total = encontristas.length
+    const presentes = encontristas.filter(p => p.check_in).length
+    const atrasados = encontristas.filter(p => {
+      const status = calcularStatusPessoa(p)
+      return status.texto === 'Atrasado'
+    }).length
+
+    return { total, presentes, atrasados }
+  }, [encontristas])
 
   const updateQueueCount = useCallback(() => {
     const q = getQueue()
@@ -169,6 +225,99 @@ export default function DashboardClient({
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
+
+  // ============================================================
+  // 🔥 BUSCAR ENCONTRISTAS COM CONTROLE DE VERSÃO (evita race condition)
+  // ============================================================
+  const buscarEncontristas = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current
+
+    setLoading(true)
+
+    const supabaseClient = createClient()
+    const repo = createEncontristaRepository(supabaseClient)
+    const { data, error } = await repo.findAll()
+
+    // 🔥 Ignora resposta antiga se houver um fetch mais recente
+    if (fetchId !== fetchIdRef.current) {
+      console.log('[DASHBOARD] Ignorando resposta antiga de fetch', fetchId, fetchIdRef.current)
+      return
+    }
+
+    if (error) {
+      console.error('[DASHBOARD] Erro ao buscar encontristas:', error)
+      showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.')
+      setLoading(false)
+      return
+    }
+
+    if (data) {
+      setEncontristas(data)
+    }
+
+    setLoading(false)
+  }, [showToast])
+
+  // ============================================================
+  // 🔥 SINCRONIZAÇÃO OFFLINE (declarada DEPOIS de buscarEncontristas)
+  // ============================================================
+  const syncOfflineData = useCallback(async () => {
+    const supabaseClient = createClient()
+    
+    const result = await syncOffline({
+      getQueue: () => getQueue() as QueueItem[],
+      saveQueue: (queue) => saveQueue(queue),
+      insertNovoPacienteRemote: async (data) => {
+        return await supabaseClient.from('encontristas').insert(data)
+      },
+      updateCheckinRemote: async (id, status) => {
+        return await supabaseClient
+          .from('encontristas')
+          .update({ check_in: status })
+          .eq('id', id)
+      }
+    })
+
+    updateQueueCount()
+    await buscarEncontristas()
+
+    if (result.total === 0) {
+      showToast('warning', 'Sincronização', 'Nenhum dado pendente')
+      return
+    }
+
+    if (result.falhas === 0) {
+      showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`)
+    } else {
+      showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`)
+    }
+  }, [buscarEncontristas, showToast, updateQueueCount])
+
+  // ============================================================
+  // 🔥 CONTROLADOR ÚNICO DE ONLINE/OFFLINE
+  // ============================================================
+  useEffect(() => {
+    const update = () => {
+      const online = navigator.onLine
+      setIsOnline(online)
+
+      if (online) {
+        syncOfflineData()
+      } else {
+        showToast('warning', 'Sem internet', 'Modo offline ativado.')
+      }
+    }
+
+    update()
+
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [syncOfflineData, showToast])
 
   useEffect(() => {
     if (modoSimples && inputRef.current) {
@@ -202,28 +351,6 @@ export default function DashboardClient({
       setModoSimples(prev => !prev);
     });
   },[]);
-
-  // --- BUSCAR ENCONTRISTAS COM REPOSITORY ---
-  const buscarEncontristas = useCallback(async () => {
-    setLoading(true)
-
-    const supabaseClient = createClient()
-    const repo = createEncontristaRepository(supabaseClient)
-    const { data, error } = await repo.findAll()
-
-    if (error) {
-      console.error('[DASHBOARD] Erro ao buscar encontristas:', error)
-      showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.')
-      setLoading(false)
-      return
-    }
-
-    if (data) {
-      setEncontristas(data)
-    }
-
-    setLoading(false)
-  }, [showToast])
 
   // --- EVENTO PERSONALIZADO PARA REFRESH ---
   useEffect(() => {
@@ -269,6 +396,113 @@ export default function DashboardClient({
     }
   }, [buscarEncontristas])
 
+  // ============================================================
+  // 🔥 DEBOUNCE REFETCH (evita tempestade de requisições)
+  // ============================================================
+  const debounceRefetch = useCallback(() => {
+    if (refetchTimeoutRef.current) {
+      clearTimeout(refetchTimeoutRef.current)
+    }
+    refetchTimeoutRef.current = setTimeout(() => {
+      buscarEncontristas()
+    }, 500)
+  }, [buscarEncontristas])
+
+  // ============================================================
+  // 🔥 REALTIME SUPABASE - HÍBRIDO INTELIGENTE (CORRIGIDO TYPESCRIPT)
+  // ============================================================
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-dashboard')
+
+      // 🔥 ENCONTRISTAS (update leve e incremental)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'encontristas',
+        },
+        (payload) => {
+          console.log('[REALTIME] encontristas', payload)
+
+          setEncontristas((prev) => {
+            const { eventType, new: newRow, old } = payload
+            
+            // Converte e valida o newRow para nosso tipo
+            const validatedNew = toEncontristaDashboard(newRow)
+            const validatedOld = old as { id: number }
+            
+            if (eventType === 'INSERT' && validatedNew) {
+              return [validatedNew, ...prev]
+            }
+
+            if (eventType === 'UPDATE' && validatedNew) {
+              return prev.map(p =>
+                p.id === validatedNew.id ? { ...p, ...validatedNew } : p
+              )
+            }
+
+            if (eventType === 'DELETE' && validatedOld?.id) {
+              return prev.filter(p => p.id !== validatedOld.id)
+            }
+
+            return prev
+          })
+        }
+      )
+
+      // 🔥 PRESCRIÇÕES (refetch com debounce)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'prescricoes',
+        },
+        () => {
+          console.log('[REALTIME] prescricoes → refetch com debounce')
+          debounceRefetch()
+        }
+      )
+
+      // 🔥 HISTÓRICO (refetch com debounce)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'historico_administracao',
+        },
+        () => {
+          console.log('[REALTIME] historico → refetch com debounce')
+          debounceRefetch()
+        }
+      )
+
+      .subscribe()
+
+    return () => {
+      if (refetchTimeoutRef.current) {
+        clearTimeout(refetchTimeoutRef.current)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, debounceRefetch])
+
+  // 🔥 Limpeza no unmount com cópia do valor do ref
+  useEffect(() => {
+    const currentFetchId = fetchIdRef.current
+    
+    return () => {
+      if (refetchTimeoutRef.current) {
+        clearTimeout(refetchTimeoutRef.current)
+      }
+      // Incrementa fetchId para ignorar qualquer callback pendente
+      fetchIdRef.current = currentFetchId + 1
+    }
+  }, [])
+
   // --- ADAPTADOR UI ↔ DOMÍNIO (STATUS) ---
   const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
     const status = calcularStatusPessoa(pessoa)
@@ -284,61 +518,9 @@ export default function DashboardClient({
     }
   },[]);
 
-   // --- SINCRONIZAÇÃO OFFLINE ---
-  const syncOfflineData = useCallback(async () => {
-    const supabaseClient = createClient()
-    
-    const result = await syncOffline({
-      getQueue: () => getQueue() as QueueItem[],
-      saveQueue: (queue) => saveQueue(queue),
-      insertNovoPacienteRemote: async (data) => {
-        return await supabaseClient.from('encontristas').insert(data)
-      },
-      updateCheckinRemote: async (id, status) => {
-        return await supabaseClient
-          .from('encontristas')
-          .update({ check_in: status })
-          .eq('id', id)
-      }
-    })
-
-    updateQueueCount()
-    await buscarEncontristas()
-
-    if (result.total === 0) {
-      showToast('warning', 'Sincronização', 'Nenhum dado pendente')
-      return
-    }
-
-    if (result.falhas === 0) {
-      showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`)
-    } else {
-      showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`)
-    }
-  },[buscarEncontristas, showToast, updateQueueCount])
-
   useEffect(() => {
-    setIsOnline(navigator.onLine)
     updateQueueCount()
-
-    const handleOnline = () => {
-      setIsOnline(true)
-      syncOfflineData()
-    }
-
-    const handleOffline = () => {
-      setIsOnline(false)
-      showToast('warning', 'Sem internet', 'Modo offline ativado.')
-    }
-
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [syncOfflineData, updateQueueCount, showToast])
+  }, [updateQueueCount])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -367,7 +549,9 @@ export default function DashboardClient({
     window.location.reload()
   }
 
-  // 🔥 SMART SEARCH + FALLBACK INTELIGENTE
+  // ============================================================
+  // 🔥 SMART SEARCH PRIORIZANDO EXATOS NO TOPO
+  // ============================================================
   const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     
@@ -378,10 +562,14 @@ export default function DashboardClient({
     if (isNumeric) {
       // Prioridade 1: Busca exata por ID
       const exact = encontristas.filter(p => String(p.id) === term);
-      if (exact.length > 0) return exact;
-
-      // Fallback Inteligente: Se não encontrou o ID exato, busca por IDs que contenham aquele número
-      return encontristas.filter(p => String(p.id).includes(term));
+      
+      // Prioridade 2: IDs que contenham o termo (excluindo os exatos para não duplicar)
+      const contains = encontristas.filter(p => 
+        String(p.id).includes(term) && String(p.id) !== term
+      );
+      
+      // Retorna exatos primeiro, depois os que contêm
+      return [...exact, ...contains];
     }
 
     // Fallback: Busca textual por nome ou responsável
@@ -652,8 +840,68 @@ export default function DashboardClient({
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24">
       
-      {/* HEADER */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
+      {/* BARRA MOBILE (TOPO COM STATS E STATUS) */}
+      <div className="md:hidden sticky top-0 z-30 backdrop-blur-xl bg-white/80 border-b border-slate-100 px-4 py-3">
+        
+        {/* STATUS ONLINE */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-semibold text-slate-500">Sistema</span>
+          
+          <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${
+            isOnline 
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-rose-100 text-rose-700'
+          }`}>
+            {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
+            {isOnline ? 'Online' : 'Offline'}
+          </div>
+        </div>
+
+        {/* STATS MOBILE */}
+        <div className="flex items-center justify-between text-xs font-semibold">
+          <div className="flex flex-col items-center">
+            <span className="text-slate-400 text-[10px] uppercase tracking-wider">Total</span>
+            <motion.span 
+              key={stats.total}
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              className="text-slate-800 text-lg font-black"
+            >
+              {stats.total}
+            </motion.span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <span className="text-emerald-500 text-[10px] uppercase tracking-wider">Presentes</span>
+            <motion.span 
+              key={stats.presentes}
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              className="text-emerald-600 text-lg font-black"
+            >
+              {stats.presentes}
+            </motion.span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <span className="text-rose-500 text-[10px] uppercase tracking-wider">Atrasados</span>
+            <motion.span 
+              key={stats.atrasados}
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              className="text-rose-600 text-lg font-black"
+            >
+              {stats.atrasados}
+            </motion.span>
+          </div>
+        </div>
+      </div>
+
+      {/* HEADER (desktop original) */}
+      <header className="hidden md:block sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
         <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-md flex items-center justify-center">
@@ -777,7 +1025,7 @@ export default function DashboardClient({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={fastTransition}
-            className="px-0 mt-0"
+            className="px-0 mt-0 md:hidden"
           >
             <div className="flex items-center justify-between bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
               
@@ -1166,7 +1414,7 @@ export default function DashboardClient({
                     </div>
                   ) : (
                     (getQueue() as OfflineQueueItem[]).map((item, i) => (
-                      <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.12, ease: premiumEasing }} className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50">
+                      <motion.div key={item._id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.12, ease: premiumEasing }} className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50">
                         {item.tipo === 'novo' && item.dados && (
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">+</div>
@@ -1177,6 +1425,11 @@ export default function DashboardClient({
                           <div className="flex items-center gap-2">
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${item.status ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>{item.status ? '✓' : '✗'}</div>
                             <div><p className="font-bold text-slate-700">Check-in</p><p className="text-xs text-slate-500">ID: {item.id} → {item.status ? 'Presente' : 'Ausente'}</p></div>
+                          </div>
+                        )}
+                        {item.createdAt && (
+                          <div className="text-[9px] text-slate-400 mt-1">
+                            {new Date(item.createdAt).toLocaleTimeString()}
                           </div>
                         )}
                       </motion.div>
