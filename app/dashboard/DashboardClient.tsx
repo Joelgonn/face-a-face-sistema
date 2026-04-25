@@ -1007,6 +1007,33 @@ export default function DashboardClient({
                 <div className="space-y-2">
                   {sorted.map((pessoa, index) => {
                     const status = statusMap.get(pessoa.id);
+                    const statusText = status?.texto?.toLowerCase() || '';
+                    const isAtrasado = statusText.includes('atrasad');
+                    const isEmDia = statusText.includes('em dia');
+                    const isSemMeds = statusText.includes('sem meds');
+
+                    // Lógica de cores para a pill de status (mesma do PatientCard)
+                    let pillBgClass = '';
+                    let pillTextClass = 'text-orange-400';
+                    let pillBorderClass = '';
+
+                    if (isEmDia) {
+                      pillBgClass = 'bg-emerald-200';
+                      pillBorderClass = 'border-emerald-300';
+                    } else if (isAtrasado) {
+                      pillBgClass = 'bg-rose-200';
+                      pillBorderClass = 'border-rose-300';
+                    } else if (isSemMeds) {
+                      pillBgClass = 'bg-gray-200';
+                      pillBorderClass = 'border-gray-300';
+                    } else {
+                      pillBgClass = status?.cor || 'bg-slate-100';
+                      pillTextClass = status?.cor?.includes('orange') ? 'text-orange-600' : 'text-slate-600';
+                      pillBorderClass = 'border-transparent';
+                    }
+
+                    const customPillColor = `${pillBgClass} ${pillTextClass} ${pillBorderClass} border`;
+
                     return (
                       <motion.div 
                         key={pessoa.id}
@@ -1021,7 +1048,7 @@ export default function DashboardClient({
                         onClick={() => handleNavigateToPatientPage(pessoa.id)}
                       >
                         <div className="col-span-2">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border transition-colors ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${customPillColor}`}>
                             {status?.icone} {status?.texto}
                           </span>
                         </div>

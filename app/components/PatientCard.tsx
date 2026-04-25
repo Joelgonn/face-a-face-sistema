@@ -72,10 +72,28 @@ export function PatientCard({
     leftBorderClass = 'border-l-emerald-500'
   }
 
-  // Cor da Pill (badge de status): Laranja para "Em dia" e "Sem meds" 
-  const customPillColor = (isEmDia || isSemMeds) 
-    ? 'bg-orange-50 text-orange-600 border border-orange-200'
-    : status?.cor || 'bg-slate-100 text-slate-600'
+  // Pill (badge de status) com as novas regras visuais
+  let pillBgClass = ''
+  let pillTextClass = 'text-orange-400' // sempre laranja
+  let pillBorderClass = ''
+
+  if (isEmDia) {
+    pillBgClass = 'bg-emerald-200'
+    pillBorderClass = 'border-emerald-300'
+  } else if (isAtrasado) {
+    pillBgClass = 'bg-rose-200'
+    pillBorderClass = 'border-rose-300'
+  } else if (isSemMeds) {
+    pillBgClass = 'bg-gray-200'
+    pillBorderClass = 'border-gray-300'
+  } else {
+    // fallback para outros status (ex: se tiver qualquer outro texto)
+    pillBgClass = status?.cor || 'bg-slate-100'
+    pillTextClass = status?.cor?.includes('orange') ? 'text-orange-600' : 'text-slate-600'
+    pillBorderClass = 'border-transparent'
+  }
+
+  const customPillColor = `${pillBgClass} ${pillTextClass} ${pillBorderClass} border`
 
   return (
     <motion.div
