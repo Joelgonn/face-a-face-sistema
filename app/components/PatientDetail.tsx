@@ -2,8 +2,8 @@
 
 import { motion, Transition } from 'framer-motion'
 import { X, User, Phone, AlertCircle, Pill, Clock, ExternalLink } from 'lucide-react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useTransition } from 'react'
 
 type PatientDetailProps = {
   paciente: {
@@ -17,7 +17,6 @@ type PatientDetailProps = {
   onClose: () => void
 }
 
-// Easing premium (iOS-like)
 const springTransition: Transition = {
   type: 'spring',
   stiffness: 350,
@@ -31,12 +30,19 @@ const fastTransition: Transition = {
 
 export function PatientDetail({ paciente, onClose }: PatientDetailProps) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
 
   const handleNavigateToFullPage = () => {
-    onClose()
-    setTimeout(() => {
+    startTransition(() => {
       router.push(`/dashboard/encontrista/${paciente.id}`)
-    }, 150)
+    })
+  }
+
+  const handleMedicamentosClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+    startTransition(() => {
+      router.push(`/dashboard/medicamentos?encontrista=${paciente.id}`)
+    })
   }
 
   return (
@@ -59,14 +65,14 @@ export function PatientDetail({ paciente, onClose }: PatientDetailProps) {
           }
         }}
         transition={springTransition}
-        className="absolute inset-x-0 bottom-0 top-auto md:inset-4 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full md:max-h-[80vh]"
+        className="absolute inset-x-0 bottom-0 top-auto md:inset-4 md:bottom-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 bg-white rounded-2xl shadow-2xl overflow-hidden max-w-lg w-full md:max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* HEADER COM LAYOUTID PARA CONTINUIDADE */}
+        {/* HEADER - FIXO */}
         <motion.div
           layoutId={`card-header-${paciente.id}`}
           className={`
-            p-5 border-b
+            p-5 border-b shrink-0
             ${paciente.check_in ? 'bg-emerald-500' : 'bg-gradient-to-r from-slate-700 to-slate-800'}
             text-white
           `}
@@ -101,12 +107,12 @@ export function PatientDetail({ paciente, onClose }: PatientDetailProps) {
           </div>
         </motion.div>
 
-        {/* CONTEÚDO */}
+        {/* CONTEÚDO SCROLLÁVEL */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="p-5 space-y-4 max-h-[60vh] overflow-y-auto"
+          className="flex-1 overflow-y-auto p-5 space-y-4"
         >
           {/* Responsável */}
           {paciente.responsavel && (
@@ -140,39 +146,39 @@ export function PatientDetail({ paciente, onClose }: PatientDetailProps) {
               </div>
             </div>
           )}
+        </motion.div>
 
-          {/* Botão para página completa */}
+        {/* 🔥 FOOTER FIXO COM BOTÕES (solução profissional) */}
+        <div className="shrink-0 p-4 border-t border-slate-100 bg-white space-y-3">
+          {/* Botão página completa */}
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={handleNavigateToFullPage}
-            className="w-full flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-100 hover:bg-orange-100 transition-colors"
+            disabled={isPending}
+            className="w-full flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-100 hover:bg-orange-100 transition-colors disabled:opacity-50"
           >
             <div className="flex items-center gap-3">
               <ExternalLink size={18} className="text-orange-500" />
-              <span className="font-bold text-orange-700 text-sm">Ver página completa do paciente</span>
+              <span className="font-bold text-orange-700 text-sm">
+                {isPending ? 'Navegando...' : 'Ver página completa do paciente'}
+              </span>
             </div>
             <span className="text-orange-500 text-xl">→</span>
           </motion.button>
 
-          {/* Medicamentos (link) */}
-          <Link
+          {/* Botão medicamentos */}
+          <a
             href={`/dashboard/medicamentos?encontrista=${paciente.id}`}
-            className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100 hover:bg-blue-100 transition-colors"
-            onClick={(e) => {
-              e.preventDefault()
-              onClose()
-              setTimeout(() => {
-                router.push(`/dashboard/medicamentos?encontrista=${paciente.id}`)
-              }, 150)
-            }}
+            onClick={handleMedicamentosClick}
+            className="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <Pill size={18} className="text-blue-500" />
               <span className="font-bold text-blue-700 text-sm">Gerenciar Medicamentos</span>
             </div>
             <span className="text-blue-500 text-xl">→</span>
-          </Link>
-        </motion.div>
+          </a>
+        </div>
 
         {/* DICA DE GESTO (apenas mobile) */}
         <div className="md:hidden absolute top-1 left-1/2 -translate-x-1/2 w-10 h-1 bg-white/30 rounded-full" />

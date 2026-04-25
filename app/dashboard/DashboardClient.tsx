@@ -25,55 +25,48 @@ import { criarEncontrista } from '@/application/use-cases/criarEncontrista';
 import { syncOffline, QueueItem } from '@/application/use-cases/syncOffline';
 
 // --- EASING PREMIUM (iOS-LIKE) ---
-const premiumEasing: [number, number, number, number] =[0.22, 1, 0.36, 1]
-const fastTransition: Transition = { duration: 0.18, ease: premiumEasing }
-const springTransition: Transition = { type: 'spring', stiffness: 350, damping: 28 }
+const premiumEasing: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const fastTransition: Transition = { duration: 0.18, ease: premiumEasing };
+const springTransition: Transition = { type: 'spring', stiffness: 350, damping: 28 };
 
 // --- FUNÇÃO SAFE QUERY ---
 async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
-    const result = await fn()
-    
+    const result = await fn();
     if (result && typeof result === 'object') {
-      const possibleError = result as { error?: { message: string } }
+      const possibleError = result as { error?: { message: string } };
       if (possibleError.error) {
-        throw possibleError.error
+        throw possibleError.error;
       }
     }
-    
-    return result
+    return result;
   } catch (err) {
-    console.error('🔥 Erro crítico:', err)
-    alert('Erro de conexão. Clique em "Recarregar Sistema".')
-    return null
+    console.error('🔥 Erro crítico:', err);
+    alert('Erro de conexão. Clique em "Recarregar Sistema".');
+    return null;
   }
 }
 
 // --- OFFLINE QUEUE (localStorage) ---
 const getQueue = () => {
-  if (typeof window === 'undefined') return[]
-  return JSON.parse(localStorage.getItem('offlineQueue') || '[]')
-}
+  if (typeof window === 'undefined') return [];
+  return JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+};
 
 const saveQueue = (queue: unknown[]) => {
-  localStorage.setItem('offlineQueue', JSON.stringify(queue))
-}
+  localStorage.setItem('offlineQueue', JSON.stringify(queue));
+};
 
-// 🔥 Queue com ID único e timestamp
 const addToQueue = (item: unknown) => {
-  const queue = getQueue()
-  
-  // Garante que item seja um objeto antes de fazer spread
-  const itemObj = typeof item === 'object' && item !== null ? item as Record<string, unknown> : {}
-  
+  const queue = getQueue();
+  const itemObj = typeof item === 'object' && item !== null ? item as Record<string, unknown> : {};
   queue.push({
     ...itemObj,
     _id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     createdAt: Date.now()
-  })
-  
-  saveQueue(queue)
-}
+  });
+  saveQueue(queue);
+};
 
 // --- TIPAGEM AVANÇADA ---
 type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
@@ -117,21 +110,14 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-// 🔥 Helper para validar e converter objeto do Supabase para EncontristaDashboard
 function toEncontristaDashboard(row: unknown): EncontristaDashboard | null {
-  if (!row || typeof row !== 'object') return null
-  
-  const typedRow = row as Record<string, unknown>
-  
-  // Valida campos obrigatórios
-  if (typeof typedRow.id !== 'number') return null
-  if (typeof typedRow.nome !== 'string') return null
-  
-  // Garante que prescricoes existe (pode vir vazio do Supabase)
+  if (!row || typeof row !== 'object') return null;
+  const typedRow = row as Record<string, unknown>;
+  if (typeof typedRow.id !== 'number') return null;
+  if (typeof typedRow.nome !== 'string') return null;
   const prescricoes = Array.isArray(typedRow.prescricoes) 
     ? typedRow.prescricoes as EncontristaDashboard['prescricoes']
-    : []
-  
+    : [];
   return {
     id: typedRow.id,
     nome: typedRow.nome,
@@ -141,7 +127,7 @@ function toEncontristaDashboard(row: unknown): EncontristaDashboard | null {
     check_in: typedRow.check_in === true,
     created_at: typedRow.created_at as string || new Date().toISOString(),
     prescricoes
-  }
+  };
 }
 
 export default function DashboardClient({ 
@@ -153,12 +139,14 @@ export default function DashboardClient({
   const [isAdmin] = useState(isAdminInitial);
   const [loading, setLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
-  const[showStats, setShowStats] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
   const [importing, setImporting] = useState(false);
-  const[fileToImport, setFileToImport] = useState<File | null>(null);
-  const[isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const [fileToImport, setFileToImport] = useState<File | null>(null);
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -169,28 +157,30 @@ export default function DashboardClient({
   const [novasObservacoes, setNovasObservacoes] = useState('');
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const[resetPassword, setResetPassword] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  const[checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
+  const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<EncontristaDashboard | null>(null);
 
   const [modoEmergencia, setModoEmergencia] = useState(false);
-  const[isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
-  const[modoSimples, setModoSimples] = useState(true);
+  const [modoSimples, setModoSimples] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
   const [flashId, setFlashId] = useState<number | null>(null);
   const [fabOpen, setFabOpen] = useState(false);
-  const[chatbotOpen, setChatbotOpen] = useState(false);
+  const [chatbotOpen, setChatbotOpen] = useState(false);
   
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
   const [isPending, startTransition] = useTransition();
+  
+  // 🔥 BLOQUEIA UPDATES DURANTE NAVEGAÇÃO
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  // 🔥 useRefs para controle avançado
   const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fetchIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,131 +189,181 @@ export default function DashboardClient({
   const supabase = createClient();
 
   // ============================================================
-  // 🔥 STATS REATIVOS (derivado de encontristas)
+  // 🔥 DEBOUNCE PARA BUSCA (300ms padrão UX)
   // ============================================================
-  const stats = useMemo(() => {
-    const total = encontristas.length
-    const presentes = encontristas.filter(p => p.check_in).length
-    const atrasados = encontristas.filter(p => {
-      const status = calcularStatusPessoa(p)
-      return status.texto === 'Atrasado'
-    }).length
+  useEffect(() => {
+    setIsTyping(true);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setIsTyping(false);
+    }, 300);
 
-    return { total, presentes, atrasados }
-  }, [encontristas])
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // ============================================================
+  // 🔥 PRÉ-NORMALIZAÇÃO DOS DADOS (otimização de performance)
+  // ============================================================
+  const normalizedEncontristas = useMemo(() => {
+    return encontristas.map(p => ({
+      ...p,
+      nome_lower: (p.nome || '').toLowerCase(),
+      responsavel_lower: (p.responsavel || '').toLowerCase(),
+      id_str: String(p.id)
+    }));
+  }, [encontristas]);
+
+  // ============================================================
+  // 🔥 FUNÇÃO PARA REMOVER CAMPOS TEMPORÁRIOS
+  // ============================================================
+  const toOriginalEncontrista = (p: typeof normalizedEncontristas[0]): EncontristaDashboard => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { nome_lower, responsavel_lower, id_str, ...original } = p;
+    return original as EncontristaDashboard;
+  };
+
+  // ============================================================
+  // 🔥 FILTRO CORRIGIDO - Busca exata por número
+  // ============================================================
+  const filtered = useMemo(() => {
+    const term = debouncedSearch.toLowerCase().trim();
+    
+    // Sem termo de busca
+    if (!term) {
+      return normalizedEncontristas.map(toOriginalEncontrista);
+    }
+
+    const isNumeric = /^\d+$/.test(term);
+
+    if (isNumeric) {
+      // 🔥 BUSCA EXATA: só retorna o ID exato
+      const exact = normalizedEncontristas.filter(p => p.id_str === term);
+      return exact.map(toOriginalEncontrista);
+    }
+
+    // Busca textual
+    const resultados = normalizedEncontristas.filter(p => {
+      return (
+        p.nome_lower.includes(term) ||
+        p.responsavel_lower.includes(term)
+      );
+    });
+
+    return resultados.map(toOriginalEncontrista);
+  }, [normalizedEncontristas, debouncedSearch]);
 
   const updateQueueCount = useCallback(() => {
-    const q = getQueue()
-    setQueueCount(q.length)
-  },[]);
+    const q = getQueue();
+    setQueueCount(q.length);
+  }, []);
 
   const showToast = useCallback((type: 'success' | 'error' | 'warning', title: string, message: string) => {
     setToast({ type, title, message });
     setTimeout(() => setToast(null), 4000); 
-  },[]);
+  }, []);
 
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
 
   // ============================================================
-  // 🔥 BUSCAR ENCONTRISTAS COM CONTROLE DE VERSÃO (evita race condition)
+  // 🔥 BUSCAR ENCONTRISTAS (com bloqueio de navegação)
   // ============================================================
   const buscarEncontristas = useCallback(async () => {
-    const fetchId = ++fetchIdRef.current
+    if (isNavigating) return;
+    
+    const fetchId = ++fetchIdRef.current;
+    setLoading(true);
 
-    setLoading(true)
+    const supabaseClient = createClient();
+    const repo = createEncontristaRepository(supabaseClient);
+    const { data, error } = await repo.findAll();
 
-    const supabaseClient = createClient()
-    const repo = createEncontristaRepository(supabaseClient)
-    const { data, error } = await repo.findAll()
-
-    // 🔥 Ignora resposta antiga se houver um fetch mais recente
     if (fetchId !== fetchIdRef.current) {
-      console.log('[DASHBOARD] Ignorando resposta antiga de fetch', fetchId, fetchIdRef.current)
-      return
+      console.log('[DASHBOARD] Ignorando resposta antiga');
+      return;
     }
 
     if (error) {
-      console.error('[DASHBOARD] Erro ao buscar encontristas:', error)
-      showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.')
-      setLoading(false)
-      return
+      console.error('[DASHBOARD] Erro:', error);
+      showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.');
+      setLoading(false);
+      return;
     }
 
     if (data) {
-      setEncontristas(data)
+      setEncontristas(data);
     }
 
-    setLoading(false)
-  }, [showToast])
+    setLoading(false);
+  }, [showToast, isNavigating]);
 
   // ============================================================
-  // 🔥 SINCRONIZAÇÃO OFFLINE (declarada DEPOIS de buscarEncontristas)
+  // 🔥 SINCRONIZAÇÃO OFFLINE
   // ============================================================
   const syncOfflineData = useCallback(async () => {
-    const supabaseClient = createClient()
+    if (isNavigating) return;
     
+    const supabaseClient = createClient();
     const result = await syncOffline({
       getQueue: () => getQueue() as QueueItem[],
       saveQueue: (queue) => saveQueue(queue),
       insertNovoPacienteRemote: async (data) => {
-        return await supabaseClient.from('encontristas').insert(data)
+        return await supabaseClient.from('encontristas').insert(data);
       },
       updateCheckinRemote: async (id, status) => {
         return await supabaseClient
           .from('encontristas')
           .update({ check_in: status })
-          .eq('id', id)
+          .eq('id', id);
       }
-    })
+    });
 
-    updateQueueCount()
-    await buscarEncontristas()
+    updateQueueCount();
+    await buscarEncontristas();
 
     if (result.total === 0) {
-      showToast('warning', 'Sincronização', 'Nenhum dado pendente')
-      return
+      showToast('warning', 'Sincronização', 'Nenhum dado pendente');
+      return;
     }
 
     if (result.falhas === 0) {
-      showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`)
+      showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`);
     } else {
-      showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`)
+      showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`);
     }
-  }, [buscarEncontristas, showToast, updateQueueCount])
+  }, [buscarEncontristas, showToast, updateQueueCount, isNavigating]);
 
   // ============================================================
-  // 🔥 CONTROLADOR ÚNICO DE ONLINE/OFFLINE
+  // 🔥 ONLINE/OFFLINE (sem intervalo automático)
   // ============================================================
   useEffect(() => {
     const update = () => {
-      const online = navigator.onLine
-      setIsOnline(online)
-
+      const online = navigator.onLine;
+      setIsOnline(online);
+      
       if (online) {
-        syncOfflineData()
+        syncOfflineData();
       } else {
-        showToast('warning', 'Sem internet', 'Modo offline ativado.')
+        showToast('warning', 'Sem internet', 'Modo offline ativado.');
       }
-    }
+    };
 
-    update()
-
-    window.addEventListener('online', update)
-    window.addEventListener('offline', update)
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
 
     return () => {
-      window.removeEventListener('online', update)
-      window.removeEventListener('offline', update)
-    }
-  }, [syncOfflineData, showToast])
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, [syncOfflineData, showToast]);
 
   useEffect(() => {
     if (modoSimples && inputRef.current) {
-      inputRef.current.focus()
+      inputRef.current.focus();
     }
-  }, [modoSimples])
+  }, [modoSimples]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -332,10 +372,9 @@ export default function DashboardClient({
       setDeferredPrompt(evt);
       setShowInstallButton(true);
     };
-
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
-  },[]);
+  }, []);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -350,72 +389,40 @@ export default function DashboardClient({
     startTransition(() => {
       setModoSimples(prev => !prev);
     });
-  },[]);
+  }, []);
 
-  // --- EVENTO PERSONALIZADO PARA REFRESH ---
+  // --- EVENTO PERSONALIZADO PARA REFRESH (único mantido) ---
   useEffect(() => {
     const handleDashboardRefresh = () => {
-      console.log('[DASHBOARD] Refresh manual disparado via evento personalizado')
-      buscarEncontristas()
-    }
-
-    window.addEventListener('dashboard-refresh', handleDashboardRefresh)
-
+      console.log('[DASHBOARD] Refresh manual disparado');
+      buscarEncontristas();
+    };
+    window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     return () => {
-      window.removeEventListener('dashboard-refresh', handleDashboardRefresh)
-    }
-  }, [buscarEncontristas])
-
-  // --- ATUALIZAR AO VOLTAR PARA A PÁGINA (FOCUS) ---
-  useEffect(() => {
-    const handleFocus = () => {
-      console.log('[DASHBOARD] Foco na página - recarregando dados')
-      buscarEncontristas()
-    }
-
-    window.addEventListener('focus', handleFocus)
-
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-    }
-  }, [buscarEncontristas])
-
-  // --- ATUALIZAR QUANDO A ROTA VOLTA (VISIBILITY CHANGE) ---
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[DASHBOARD] Página visível novamente - recarregando dados')
-        buscarEncontristas()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [buscarEncontristas])
+      window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
+    };
+  }, [buscarEncontristas]);
 
   // ============================================================
-  // 🔥 DEBOUNCE REFETCH (evita tempestade de requisições)
+  // 🔥 DEBOUNCE REFETCH (aumentado para 1000ms)
   // ============================================================
   const debounceRefetch = useCallback(() => {
+    if (isNavigating) return;
+    
     if (refetchTimeoutRef.current) {
-      clearTimeout(refetchTimeoutRef.current)
+      clearTimeout(refetchTimeoutRef.current);
     }
     refetchTimeoutRef.current = setTimeout(() => {
-      buscarEncontristas()
-    }, 500)
-  }, [buscarEncontristas])
+      buscarEncontristas();
+    }, 1000);
+  }, [buscarEncontristas, isNavigating]);
 
   // ============================================================
-  // 🔥 REALTIME SUPABASE - HÍBRIDO INTELIGENTE (CORRIGIDO TYPESCRIPT)
+  // 🔥 REALTIME SUPABASE (único source of truth)
   // ============================================================
   useEffect(() => {
     const channel = supabase
       .channel('realtime-dashboard')
-
-      // 🔥 ENCONTRISTAS (update leve e incremental)
       .on(
         'postgres_changes',
         {
@@ -424,35 +431,30 @@ export default function DashboardClient({
           table: 'encontristas',
         },
         (payload) => {
-          console.log('[REALTIME] encontristas', payload)
+          console.log('[REALTIME] encontristas', payload);
+          
+          if (isNavigating) return;
 
           setEncontristas((prev) => {
-            const { eventType, new: newRow, old } = payload
-            
-            // Converte e valida o newRow para nosso tipo
-            const validatedNew = toEncontristaDashboard(newRow)
-            const validatedOld = old as { id: number }
+            const { eventType, new: newRow, old } = payload;
+            const validatedNew = toEncontristaDashboard(newRow);
+            const validatedOld = old as { id: number };
             
             if (eventType === 'INSERT' && validatedNew) {
-              return [validatedNew, ...prev]
+              return [validatedNew, ...prev];
             }
-
             if (eventType === 'UPDATE' && validatedNew) {
               return prev.map(p =>
                 p.id === validatedNew.id ? { ...p, ...validatedNew } : p
-              )
+              );
             }
-
             if (eventType === 'DELETE' && validatedOld?.id) {
-              return prev.filter(p => p.id !== validatedOld.id)
+              return prev.filter(p => p.id !== validatedOld.id);
             }
-
-            return prev
-          })
+            return prev;
+          });
         }
       )
-
-      // 🔥 PRESCRIÇÕES (refetch com debounce)
       .on(
         'postgres_changes',
         {
@@ -461,12 +463,10 @@ export default function DashboardClient({
           table: 'prescricoes',
         },
         () => {
-          console.log('[REALTIME] prescricoes → refetch com debounce')
-          debounceRefetch()
+          console.log('[REALTIME] prescricoes → refetch com debounce');
+          debounceRefetch();
         }
       )
-
-      // 🔥 HISTÓRICO (refetch com debounce)
       .on(
         'postgres_changes',
         {
@@ -475,37 +475,33 @@ export default function DashboardClient({
           table: 'historico_administracao',
         },
         () => {
-          console.log('[REALTIME] historico → refetch com debounce')
-          debounceRefetch()
+          console.log('[REALTIME] historico → refetch com debounce');
+          debounceRefetch();
         }
       )
-
-      .subscribe()
+      .subscribe();
 
     return () => {
       if (refetchTimeoutRef.current) {
-        clearTimeout(refetchTimeoutRef.current)
+        clearTimeout(refetchTimeoutRef.current);
       }
-      supabase.removeChannel(channel)
-    }
-  }, [supabase, debounceRefetch])
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, debounceRefetch, isNavigating]);
 
-  // 🔥 Limpeza no unmount com cópia do valor do ref
   useEffect(() => {
-    const currentFetchId = fetchIdRef.current
-    
+    const currentFetchId = fetchIdRef.current;
     return () => {
       if (refetchTimeoutRef.current) {
-        clearTimeout(refetchTimeoutRef.current)
+        clearTimeout(refetchTimeoutRef.current);
       }
-      // Incrementa fetchId para ignorar qualquer callback pendente
-      fetchIdRef.current = currentFetchId + 1
-    }
-  }, [])
+      fetchIdRef.current = currentFetchId + 1;
+    };
+  }, []);
 
   // --- ADAPTADOR UI ↔ DOMÍNIO (STATUS) ---
   const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
-    const status = calcularStatusPessoa(pessoa)
+    const status = calcularStatusPessoa(pessoa);
     return {
       cor: status.cor,
       bordaL: status.bordaL,
@@ -515,77 +511,14 @@ export default function DashboardClient({
               status.icone === 'atencao' ? <Clock size={16}/> :
               status.icone === 'emdia' ? <CheckCircle2 size={16}/> :
               <Activity size={16}/>
-    }
-  },[]);
+    };
+  }, []);
 
   useEffect(() => {
-    updateQueueCount()
-  }, [updateQueueCount])
+    updateQueueCount();
+  }, [updateQueueCount]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (navigator.onLine && getQueue().length > 0) {
-        syncOfflineData()
-      }
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [syncOfflineData])
-
-  useEffect(() => {
-    const handleSyncFromSW = () => {
-      console.log('[PWA] Sincronizando dados offline via Service Worker')
-      syncOfflineData()
-    }
-    window.addEventListener('sync-offline-data', handleSyncFromSW)
-    return () => window.removeEventListener('sync-offline-data', handleSyncFromSW)
-  }, [syncOfflineData])
-
-  const reloadData = async () => {
-    await buscarEncontristas()
-    showToast('success', 'Atualizado', 'Dados sincronizados com o servidor')
-  }
-
-  const hardReload = () => {
-    window.location.reload()
-  }
-
-  // ============================================================
-  // 🔥 SMART SEARCH PRIORIZANDO EXATOS NO TOPO
-  // ============================================================
-  const filtered = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
-    
-    if (!term) return encontristas;
-
-    const isNumeric = /^\d+$/.test(term);
-
-    if (isNumeric) {
-      // Prioridade 1: Busca exata por ID
-      const exact = encontristas.filter(p => String(p.id) === term);
-      
-      // Prioridade 2: IDs que contenham o termo (excluindo os exatos para não duplicar)
-      const contains = encontristas.filter(p => 
-        String(p.id).includes(term) && String(p.id) !== term
-      );
-      
-      // Retorna exatos primeiro, depois os que contêm
-      return [...exact, ...contains];
-    }
-
-    // Fallback: Busca textual por nome ou responsável
-    return encontristas.filter(p => {
-      const nome = p.nome || '';
-      const responsavel = p.responsavel || '';
-
-      return (
-        nome.toLowerCase().includes(term) ||
-        responsavel.toLowerCase().includes(term)
-      );
-    });
-
-  }, [encontristas, searchTerm]);
-
-  // 🔥 EFEITO PARA HIGHLIGHT (PISCAR O CARD AO ENCONTRAR ID EXATO NA BUSCA)
+  // 🔥 EFEITO PARA HIGHLIGHT DO CARD
   useEffect(() => {
     const term = searchTerm.trim();
     const isNumeric = /^\d+$/.test(term);
@@ -594,12 +527,9 @@ export default function DashboardClient({
       const exact = encontristas.find(p => String(p.id) === term);
       if (exact) {
         setFlashId(exact.id);
-        
-        // Remove o highlight após 800ms
         const timeout = setTimeout(() => {
           setFlashId(null);
         }, 800);
-        
         return () => clearTimeout(timeout);
       }
     }
@@ -613,72 +543,102 @@ export default function DashboardClient({
     return map;
   }, [filtered, getStatusPessoa]);
 
+  // ============================================================
+  // 🔥 SORT CORRIGIDO COM PRIORIDADE PARA ID
+  // ============================================================
   const sorted = useMemo(() => {
+    const term = debouncedSearch.trim();
+    const isNumeric = /^\d+$/.test(term);
+    
     return [...filtered].sort((a, b) => {
+      // 🔥 PRIORIDADE MÁXIMA: ID exato no topo
+      if (isNumeric) {
+        const aIsExact = String(a.id) === term;
+        const bIsExact = String(b.id) === term;
+        
+        if (aIsExact && !bIsExact) return -1;
+        if (!aIsExact && bIsExact) return 1;
+      }
+      
+      // Depois ordena por prioridade de status
       const statusA = statusMap.get(a.id);
       const statusB = statusMap.get(b.id);
-      return (statusB?.prioridade || 0) - (statusA?.prioridade || 0);
+      const priorityDiff = (statusB?.prioridade || 0) - (statusA?.prioridade || 0);
+      
+      if (priorityDiff !== 0) return priorityDiff;
+      
+      // Por fim, ordena por ID (para consistência)
+      return a.id - b.id;
     });
-  }, [filtered, statusMap]);
+  }, [filtered, statusMap, debouncedSearch]);
 
   const getConnectionStatus = () => {
-    if (!isOnline) return { text: 'Offline', bg: 'bg-rose-100 text-rose-700', icon: <WifiOff size={12} className="inline mr-1" /> }
-    if (queueCount > 0) return { text: 'Pendente', bg: 'bg-amber-100 text-amber-700', icon: <Cloud size={12} className="inline mr-1" /> }
-    return { text: 'Online', bg: 'bg-emerald-100 text-emerald-700', icon: <Wifi size={12} className="inline mr-1" /> }
-  }
+    if (!isOnline) return { text: 'Offline', bg: 'bg-rose-100 text-rose-700', icon: <WifiOff size={12} className="inline mr-1" /> };
+    if (queueCount > 0) return { text: 'Pendente', bg: 'bg-amber-100 text-amber-700', icon: <Cloud size={12} className="inline mr-1" /> };
+    return { text: 'Online', bg: 'bg-emerald-100 text-emerald-700', icon: <Wifi size={12} className="inline mr-1" /> };
+  };
 
-  const connectionStatus = getConnectionStatus()
+  const connectionStatus = getConnectionStatus();
+
+  const reloadData = async () => {
+    await buscarEncontristas();
+    showToast('success', 'Atualizado', 'Dados sincronizados com o servidor');
+  };
+
+  const hardReload = () => {
+    window.location.reload();
+  };
 
   const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => {
     setCheckInTarget({ id, status: currentStatus, nome });
   };
 
   const confirmCheckIn = async () => {
-    if (!checkInTarget) return
+    if (!checkInTarget) return;
     
     if (modoEmergencia) {
-      showToast('warning', 'Modo emergência', 'Ação bloqueada')
-      return
+      showToast('warning', 'Modo emergência', 'Ação bloqueada');
+      return;
     }
 
-    const { id, status } = checkInTarget
+    const { id, status } = checkInTarget;
 
-    setFlashId(id)
-    setTimeout(() => setFlashId(null), 300)
+    setFlashId(id);
+    setTimeout(() => setFlashId(null), 300);
 
     if (navigator.vibrate) {
-      navigator.vibrate(50)
+      navigator.vibrate(50);
     }
 
-    const backup = [...encontristas]
+    const backup = [...encontristas];
 
     setEncontristas(prev =>
       prev.map(p => p.id === id ? { ...p, check_in: !status } : p)
-    )
+    );
 
-    setCheckInTarget(null)
+    setCheckInTarget(null);
 
     const result = await toggleCheckin(
       { id, statusAtual: status, isOnline },
       {
         updateRemote: async (id, status) => {
-          return await supabase.from('encontristas').update({ check_in: status }).eq('id', id)
+          return await supabase.from('encontristas').update({ check_in: status }).eq('id', id);
         },
         addToQueue: (item) => {
-          addToQueue(item)
-          updateQueueCount()
+          addToQueue(item);
+          updateQueueCount();
         }
       }
-    )
+    );
 
     if (result.queued) {
-      showToast('warning', 'Offline', 'Check-in salvo localmente.')
-      return
+      showToast('warning', 'Offline', 'Check-in salvo localmente.');
+      return;
     }
 
     if (result.shouldRollback) {
-      setEncontristas(backup)
-      showToast('error', 'Erro', 'Falha ao atualizar no servidor')
+      setEncontristas(backup);
+      showToast('error', 'Erro', 'Falha ao atualizar no servidor');
     }
   };
 
@@ -687,55 +647,55 @@ export default function DashboardClient({
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (modoEmergencia) {
-      showToast('warning', 'Modo emergência', 'Ação bloqueada')
-      return
+      showToast('warning', 'Modo emergência', 'Ação bloqueada');
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     const result = await criarEncontrista(
       { nome: novoNome, responsavel: novoResponsavel, alergias: novasAlergias, observacoes: novasObservacoes, isOnline },
       {
         insertRemote: async (data) => {
-          return await supabase.from('encontristas').insert(data)
+          return await supabase.from('encontristas').insert(data);
         },
         addToQueue: (item) => {
-          addToQueue(item)
-          updateQueueCount()
+          addToQueue(item);
+          updateQueueCount();
         }
       }
-    )
+    );
 
     if (result.queued) {
-      showToast('warning', 'Offline', 'Paciente salvo localmente.')
+      showToast('warning', 'Offline', 'Paciente salvo localmente.');
       setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
-      setIsModalOpen(false)
-      setSaving(false)
-      return
+      setIsModalOpen(false);
+      setSaving(false);
+      return;
     }
 
     if (!result.success) {
-      showToast('warning', 'Atenção', result.error || 'Erro ao salvar')
-      setSaving(false)
-      return
+      showToast('warning', 'Atenção', result.error || 'Erro ao salvar');
+      setSaving(false);
+      return;
     }
 
-    showToast('success', 'Cadastrado!', `${novoNome} adicionado.`)
+    showToast('success', 'Cadastrado!', `${novoNome} adicionado.`);
     setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
-    setIsModalOpen(false)
-    await buscarEncontristas()
-    setSaving(false)
+    setIsModalOpen(false);
+    await buscarEncontristas();
+    setSaving(false);
   };
 
   const handleZerarSistema = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (modoEmergencia) {
-      showToast('warning', 'Modo emergência', 'Ação bloqueada')
-      return
+      showToast('warning', 'Modo emergência', 'Ação bloqueada');
+      return;
     }
     
     setResetError(null);
@@ -757,8 +717,8 @@ export default function DashboardClient({
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (modoEmergencia) {
-      showToast('warning', 'Modo emergência', 'Ação bloqueada')
-      return
+      showToast('warning', 'Modo emergência', 'Ação bloqueada');
+      return;
     }
     const file = event.target.files?.[0];
     if (file) { setFileToImport(file); setIsImportConfirmOpen(true); }
@@ -778,7 +738,7 @@ export default function DashboardClient({
           observacoes: string | null;
           responsavel: string | null;
           check_in: boolean;
-        }[] =[];
+        }[] = [];
         
         for (const parts of results.data as string[][]) {
           if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {
@@ -830,78 +790,25 @@ export default function DashboardClient({
     setTimeout(() => confirmCheckIn(), 100);
   };
 
-  const handleNavigateToPatientPage = (id: number) => {
-    setSelectedPatient(null)
+  // 🔥 NAVEGAÇÃO OTIMIZADA (sem delay e com bloqueio)
+  const handleNavigateToPatientPage = useCallback((id: number) => {
+    setIsNavigating(true);
+    setSelectedPatient(null);
+    
+    startTransition(() => {
+      router.push(`/dashboard/encontrista/${id}`);
+    });
+    
     setTimeout(() => {
-      router.push(`/dashboard/encontrista/${id}`)
-    }, 150)
-  }
+      setIsNavigating(false);
+    }, 500);
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24">
       
-      {/* BARRA MOBILE (TOPO COM STATS E STATUS) */}
-      <div className="md:hidden sticky top-0 z-30 backdrop-blur-xl bg-white/80 border-b border-slate-100 px-4 py-3">
-        
-        {/* STATUS ONLINE */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-slate-500">Sistema</span>
-          
-          <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${
-            isOnline 
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-rose-100 text-rose-700'
-          }`}>
-            {isOnline ? <Wifi size={10} /> : <WifiOff size={10} />}
-            {isOnline ? 'Online' : 'Offline'}
-          </div>
-        </div>
-
-        {/* STATS MOBILE */}
-        <div className="flex items-center justify-between text-xs font-semibold">
-          <div className="flex flex-col items-center">
-            <span className="text-slate-400 text-[10px] uppercase tracking-wider">Total</span>
-            <motion.span 
-              key={stats.total}
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              className="text-slate-800 text-lg font-black"
-            >
-              {stats.total}
-            </motion.span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <span className="text-emerald-500 text-[10px] uppercase tracking-wider">Presentes</span>
-            <motion.span 
-              key={stats.presentes}
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              className="text-emerald-600 text-lg font-black"
-            >
-              {stats.presentes}
-            </motion.span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <span className="text-rose-500 text-[10px] uppercase tracking-wider">Atrasados</span>
-            <motion.span 
-              key={stats.atrasados}
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              className="text-rose-600 text-lg font-black"
-            >
-              {stats.atrasados}
-            </motion.span>
-          </div>
-        </div>
-      </div>
-
-      {/* HEADER (desktop original) */}
-      <header className="hidden md:block sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
+      {/* HEADER COMPLETO (SEMPRE VISÍVEL NO DESKTOP) */}
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
         <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-md flex items-center justify-center">
@@ -913,7 +820,7 @@ export default function DashboardClient({
           </div>
           
           <div className="flex items-center gap-2">
-            {showInstallButton && modoSimples && (
+            {showInstallButton && (
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 transition={fastTransition}
@@ -924,11 +831,12 @@ export default function DashboardClient({
               </motion.button>
             )}
 
+            {/* Botões de toggle modo */}
             <div className="hidden md:flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 transition={fastTransition}
-                onClick={() => { if (!modoSimples) toggleModoSimples() }}
+                onClick={() => { if (!modoSimples) toggleModoSimples(); }}
                 disabled={isPending}
                 className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${modoSimples ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
               >
@@ -939,7 +847,7 @@ export default function DashboardClient({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 transition={fastTransition}
-                onClick={() => { if (modoSimples) toggleModoSimples() }}
+                onClick={() => { if (modoSimples) toggleModoSimples(); }}
                 disabled={isPending}
                 className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${!modoSimples ? 'bg-slate-700 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
               >
@@ -948,13 +856,14 @@ export default function DashboardClient({
               </motion.button>
             </div>
 
-            {!modoSimples && (
-              <div className={`hidden sm:block px-3 py-1.5 rounded-full text-xs font-bold ${connectionStatus.bg}`}>
-                {connectionStatus.icon} {connectionStatus.text}
-              </div>
-            )}
+            {/* Status de conexão */}
+            <div className={`hidden sm:block px-3 py-1.5 rounded-full text-xs font-bold ${connectionStatus.bg}`}>
+              {connectionStatus.icon} {connectionStatus.text}
+              {queueCount > 0 && <span className="ml-1 font-black">({queueCount})</span>}
+            </div>
 
-            <div className={modoSimples ? 'relative md:hidden' : 'relative'}>
+            {/* Menu dropdown */}
+            <div className="relative">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 transition={fastTransition}
@@ -1000,137 +909,98 @@ export default function DashboardClient({
                         </Link>
                       </>
                     )}
+                    
+                    <div className="border-t border-slate-100 my-1" />
+                    <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-rose-50 transition-all text-base font-semibold text-rose-600 flex items-center gap-3">
+                      <LogOut size={18} /> Sair
+                    </motion.button>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-
-            <motion.button 
-              whileTap={{ scale: 0.95 }}
-              transition={fastTransition}
-              onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} 
-              className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
-            >
-              <LogOut size={22}/>
-            </motion.button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
         
-        {/* MINI STATS BAR PARA MOBILE (visível apenas em modo simples) */}
-        {modoSimples && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={fastTransition}
-            className="px-0 mt-0 md:hidden"
-          >
-            <div className="flex items-center justify-between bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
-              
-              {/* STATS MINI */}
-              <div className="flex items-center gap-4 text-[11px] font-black tracking-wide">
-                <motion.span
-                  key={totalEncontristas}
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="text-slate-600"
-                >
-                  👥 {totalEncontristas}
-                </motion.span>
-                <motion.span
-                  key={totalPresentes}
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="text-emerald-600"
-                >
-                  ✅ {totalPresentes}
-                </motion.span>
-                <motion.span
-                  key={totalAusentes}
-                  initial={{ scale: 0.8 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="text-rose-600"
-                >
-                  ❌ {totalAusentes}
-                </motion.span>
-              </div>
-
-              {/* STATUS CONEXÃO */}
-              <div className={`text-[10px] px-2 py-1 rounded-full font-bold ${connectionStatus.bg}`}>
-                {connectionStatus.icon} {connectionStatus.text}
-                {queueCount > 0 && <span className="ml-1 bg-white/50 px-1 rounded-full">{queueCount}</span>}
-              </div>
+        {/* STATS EXPANDIBLE (VISÃO GERAL - Desktop) */}
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <Activity className="text-orange-500 w-5 h-5" />
+              <span className="font-bold text-slate-700">Visão Geral</span>
             </div>
-          </motion.div>
-        )}
-
-        {/* STATS EXPANDIBLE (apenas desktop, mantido como estava) */}
-        {!modoSimples && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <Activity className="text-orange-500 w-5 h-5" />
-                <span className="font-bold text-slate-700">Visão Geral</span>
-              </div>
-              <div className="flex items-center gap-4">
-                {!showStats && (
-                  <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
-                    <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
-                    <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
-                    <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
-                  </div>
-                )}
-                <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
-              </div>
-            </button>
-
-            <AnimatePresence>
-              {showStats && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={fastTransition} className="border-t border-slate-100">
-                  <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
-                    <div className="p-4 flex flex-col items-center justify-center text-center">
-                      <Users size={20} className="text-blue-500 mb-1" />
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
-                      <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
-                    </div>
-                    <div className="p-4 flex flex-col items-center justify-center text-center">
-                      <UserCheck size={20} className="text-emerald-500 mb-1" />
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
-                      <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
-                    </div>
-                    <div className="p-4 flex flex-col items-center justify-center text-center">
-                      <UserX size={20} className="text-rose-500 mb-1" />
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
-                      <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
-                    </div>
-                  </div>
-                </motion.div>
+            <div className="flex items-center gap-4">
+              {!showStats && (
+                <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
+                  <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
+                  <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
+                  <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
+                </div>
               )}
-            </AnimatePresence>
-          </motion.div>
-        )}
+              <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
+            </div>
+          </button>
 
-        {/* SEARCH BAR */}
+          <AnimatePresence>
+            {showStats && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={fastTransition} className="border-t border-slate-100">
+                <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
+                  <div className="p-4 flex flex-col items-center justify-center text-center">
+                    <Users size={20} className="text-blue-500 mb-1" />
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
+                    <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
+                  </div>
+                  <div className="p-4 flex flex-col items-center justify-center text-center">
+                    <UserCheck size={20} className="text-emerald-500 mb-1" />
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
+                    <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
+                  </div>
+                  <div className="p-4 flex flex-col items-center justify-center text-center">
+                    <UserX size={20} className="text-rose-500 mb-1" />
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
+                    <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        {/* SEARCH BAR COM INDICADOR DE DIGITAÇÃO */}
         <div className="flex flex-col gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
             <input 
               ref={inputRef}
               type="text" 
-              placeholder={modoSimples ? "Buscar por nome ou ID..." : "Buscar por paciente, responsável ou ID..."}
+              placeholder="Buscar por nome, responsável ou ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-orange-500/10 font-medium text-slate-700 shadow-sm transition-all text-base"
             />
+            
+            {/* INDICADOR DE DIGITAÇÃO */}
+            {isTyping && (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                <Loader2 size={18} className="text-orange-500 animate-spin" />
+              </div>
+            )}
+            
+            {/* CONTADOR DE RESULTADOS */}
+            {!isTyping && searchTerm && (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
+                  {filtered.length}
+                </span>
+              </div>
+            )}
           </div>
           
-          {!modoSimples && isAdmin && (
-            <div className="hidden sm:flex gap-2">
+          {/* Botões de ação para admin */}
+          {isAdmin && (
+            <div className="flex gap-2">
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
               <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
                 <Upload size={20} /> <span className="hidden lg:inline">Importar</span>
@@ -1142,88 +1012,106 @@ export default function DashboardClient({
           )}
         </div>
 
-        {/* LISTA MOBILE COM PROFUNDIDADE + LAYOUTID MAGIC */}
-        <div className={modoSimples ? 'space-y-3' : 'md:hidden space-y-3'}>
-          <AnimatePresence mode="wait">
-            {!selectedPatient && (
-              <motion.div
-                key="list"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={fastTransition}
-              >
-                {loading ? (
-                  <div className="text-center py-12 text-slate-400">
-                    <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>
-                    <span className="font-medium">Carregando...</span>
-                  </div>
-                ) : sorted.length === 0 ? (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={fastTransition}
-                    className="text-center py-16 bg-white rounded-2xl border border-slate-100"
-                  >
-                    <Search size={48} className="text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-400 font-bold">Nenhum paciente encontrado.</p>
-                    {isAdmin && (
-                      <button 
-                        onClick={() => setIsModalOpen(true)}
-                        className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold"
-                      >
-                        + Adicionar primeiro paciente
-                      </button>
-                    )}
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    animate={{ 
-                      scale: selectedPatient ? 0.96 : 1,
-                      filter: selectedPatient ? 'blur(3px)' : 'blur(0px)'
-                    }}
-                    transition={fastTransition}
-                  >
-                    {sorted.map((pessoa, index) => (
-                      <motion.div
-                        key={pessoa.id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ 
-                          delay: index * 0.025, 
-                          duration: 0.18, 
-                          ease: premiumEasing 
-                        }}
-                      >
-                        <PatientCard
-                          id={pessoa.id}
-                          nome={pessoa.nome}
-                          responsavel={pessoa.responsavel}
-                          alergias={pessoa.alergias}
-                          status={statusMap.get(pessoa.id)}
-                          checkIn={pessoa.check_in || false}
-                          flashId={flashId}
-                          onCheckIn={handlePatientCheckIn}
-                          onClick={() => setSelectedPatient(pessoa)}
-                        />
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
+        {/* TÍTULO DOS RESULTADOS */}
+        {searchTerm && !isTyping && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="px-2"
+          >
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+              {filtered.length === 0 
+                ? 'Nenhum resultado encontrado' 
+                : `${filtered.length} ${filtered.length === 1 ? 'resultado' : 'resultados'}`
+              }
+            </p>
+          </motion.div>
+        )}
 
-            {selectedPatient && (
-              <PatientDetail
-                key="detail"
-                paciente={selectedPatient}
-                onClose={() => setSelectedPatient(null)}
-              />
-            )}
-          </AnimatePresence>
-        </div>
+        {/* LISTA MOBILE (apenas em modo simples) */}
+        {modoSimples && (
+          <div className="space-y-3 md:hidden">
+            <AnimatePresence mode="wait">
+              {!selectedPatient && (
+                <motion.div
+                  key="list"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={fastTransition}
+                >
+                  {loading ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>
+                      <span className="font-medium">Carregando...</span>
+                    </div>
+                  ) : sorted.length === 0 ? (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={fastTransition}
+                      className="text-center py-16 bg-white rounded-2xl border border-slate-100"
+                    >
+                      <Search size={48} className="text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-400 font-bold">Nenhum paciente encontrado.</p>
+                      {isAdmin && (
+                        <button 
+                          onClick={() => setIsModalOpen(true)}
+                          className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold"
+                        >
+                          + Adicionar primeiro paciente
+                        </button>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      animate={{ 
+                        scale: selectedPatient ? 0.96 : 1,
+                        filter: selectedPatient ? 'blur(3px)' : 'blur(0px)'
+                      }}
+                      transition={fastTransition}
+                    >
+                      {sorted.map((pessoa, index) => (
+                        <motion.div
+                          key={pessoa.id}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ 
+                            delay: index * 0.025, 
+                            duration: 0.18, 
+                            ease: premiumEasing 
+                          }}
+                        >
+                          <PatientCard
+                            id={pessoa.id}
+                            nome={pessoa.nome}
+                            responsavel={pessoa.responsavel}
+                            alergias={pessoa.alergias}
+                            status={statusMap.get(pessoa.id)}
+                            checkIn={pessoa.check_in || false}
+                            flashId={flashId}
+                            onCheckIn={handlePatientCheckIn}
+                            onClick={() => setSelectedPatient(pessoa)}
+                          />
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
 
-        {/* LISTA DESKTOP COM PROFUNDIDADE */}
+              {selectedPatient && (
+                <PatientDetail
+                  key="detail"
+                  paciente={selectedPatient}
+                  onClose={() => setSelectedPatient(null)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* LISTA DESKTOP (sempre visível em modo completo) */}
         {!modoSimples && (
           <motion.div
             animate={{ 
@@ -1231,7 +1119,7 @@ export default function DashboardClient({
               filter: selectedPatient ? 'blur(3px)' : 'blur(0px)'
             }}
             transition={fastTransition}
-            className="hidden md:block space-y-3"
+            className="space-y-3"
           >
             <div className="grid grid-cols-12 gap-4 px-8 py-2 text-slate-400 text-[11px] uppercase tracking-[0.15em] font-black">
               <div className="col-span-2">Status</div>
@@ -1260,7 +1148,6 @@ export default function DashboardClient({
                     const isEmDia = statusText.includes('em dia');
                     const isSemMeds = statusText.includes('sem meds');
 
-                    // Lógica de cores para a pill de status (mesma do PatientCard)
                     let pillBgClass = '';
                     let pillTextClass = 'text-orange-400';
                     let pillBorderClass = '';
@@ -1349,8 +1236,8 @@ export default function DashboardClient({
 
       </main>
 
-      {/* FAB BUTTON */}
-      {!chatbotOpen && (
+      {/* FAB BUTTON (apenas em modo simples) */}
+      {modoSimples && !chatbotOpen && (
         <div className="fixed bottom-6 right-6 z-40">
           <AnimatePresence>
             {fabOpen && (
@@ -1393,6 +1280,17 @@ export default function DashboardClient({
         </div>
       )}
 
+      {/* Chatbot Widget */}
+      <ChatbotWidget
+        isOpen={chatbotOpen}
+        onOpenChange={(isOpen) => {
+          setChatbotOpen(isOpen);
+          if (isOpen) setFabOpen(false);
+        }}
+      />
+
+      {/* MODAIS */}
+      
       {/* MODAL DE PENDÊNCIAS OFFLINE */}
       <AnimatePresence>
         {showQueue && !modoSimples && (
@@ -1469,7 +1367,7 @@ export default function DashboardClient({
                 <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
               </div>
               <form onSubmit={handleSalvar} className="p-5 space-y-4">
-                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Nome Completo *</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Ex: João Silva" /></div>
+                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Nome Completo *</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Ex: João Silva" required /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Responsável</label><input type="text" value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Opcional" /></div>
                   <div><label className="text-[10px] font-black text-rose-500 uppercase tracking-wider pl-2 mb-1 block">Alergias</label><input type="text" value={novasAlergias} onChange={e => setNovasAlergias(e.target.value)} className="w-full px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all" placeholder="Se houver" /></div>
@@ -1543,14 +1441,6 @@ export default function DashboardClient({
           </motion.div>
         )}
       </AnimatePresence>
-
-      <ChatbotWidget
-        isOpen={chatbotOpen}
-        onOpenChange={(isOpen) => {
-          setChatbotOpen(isOpen);
-          if (isOpen) setFabOpen(false);
-        }}
-      />
     </div>
   );
 }
