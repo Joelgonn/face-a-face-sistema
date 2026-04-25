@@ -1,69 +1,74 @@
-import { createClient } from '@/app/utils/supabase/server';
-import { redirect } from 'next/navigation';
-import EncontristaClient, { HistoricoItem } from './EncontristaClient';
+import { createClient } from '@/app/utils/supabase/server'
+import { createEncontristaRepository } from '@/infra/repositories/encontrista.repository'
+import { notFound } from 'next/navigation'
+import { EncontristaContainer, HistoricoItem } from './EncontristaContainer'
 
-export default async function EncontristaPage({ params }: { params: { id: string } }) {
-  const supabase = createClient();
-  const { id } = params;
+type Props = {
+  params: { id: string }
+}
 
-  // CONVERSÃO DE TIPO: Transforma a string do parâmetro em número
-  const idNum = parseInt(id, 10);
+// Tipo completo que o Container espera
+type MedicamentoCompleto = {
+  id: number
+  nome: string
+  created_at: string
+  cuidado: string | null
+  dosagem: string | null
+  indicacao: string | null
+  posologia: string | null
+}
 
-  // 1. Verifica autenticação
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !user.email) {
-    redirect('/');
+export default async function Page({ params }: Props) {
+  const id = Number(params.id)
+
+  if (isNaN(id)) {
+    return notFound()
   }
 
-  // 2. Busca dados do Encontrista usando o número convertido
-  const { data: pessoa } = await supabase
-    .from('encontristas')
-    .select('*')
-    .eq('id', idNum) // Agora idNum é um número
-    .single();
+  const supabase = createClient()
+  const repo = createEncontristaRepository(supabase)
+  const { data, error } = await repo.findByIdWithDetails(id)
 
-  if (!pessoa) {
-    return <div className="p-10 text-center text-gray-500">Encontrista não encontrado.</div>;
+  if (error || !data) {
+    console.error('[PAGE] Erro ao carregar paciente:', error)
+    return notFound()
   }
 
-  // 3. Busca Prescrições
-  const { data: medicacoes } = await supabase
-    .from('prescricoes')
-    .select('*')
-    .eq('encontrista_id', idNum);
-
-  const meds = medicacoes || [];
-  const medIds = meds.map(m => m.id);
-
-  // 4. Busca Histórico (apenas se houver prescrições)
-  let historico: HistoricoItem[] = [];
-  
-  if (medIds.length > 0) {
-    const { data: historicoData } = await supabase
-        .from('historico_administracao')
-        .select(`*, prescricao:prescricoes (nome_medicamento, dosagem)`)
-        .in('prescricao_id', medIds)
-        .order('data_hora', { ascending: false });
-    
-    if (historicoData) {
-        historico = historicoData as unknown as HistoricoItem[];
-    }
-  }
-
-  // 5. Busca Base de Medicamentos
+  // Buscar base de medicamentos para autocomplete
   const { data: baseMedicamentos } = await supabase
     .from('medicamentos')
-    .select('*')
-    .order('nome');
+    .select('id, nome')
+    .order('nome', { ascending: true })
 
-  // 6. Renderiza o Cliente
+  // --- ADAPTADOR (Anti-Corruption Layer) PARA MEDICAMENTOS ---
+  // Converte o formato parcial do banco (id, nome) para o formato completo que o Container espera
+  const medicamentosAdaptados: MedicamentoCompleto[] = (baseMedicamentos || []).map(m => ({
+    id: m.id,
+    nome: m.nome ?? '',
+    created_at: '',
+    cuidado: null,
+    dosagem: null,
+    indicacao: null,
+    posologia: null
+  }))
+
+  // --- ADAPTADOR (Anti-Corruption Layer) PARA PACIENTE ---
+  // Converte o formato do repository (EncontristaCompleto) para o formato que o Container espera (PacienteCompleto)
+  const pacienteAdaptado = {
+    ...data,
+    prescricoes: data.prescricoes.map(p => ({
+      ...p,
+      encontrista_id: data.id,
+      observacao: null
+    })),
+    // Garantimos que o histórico só contém itens com prescricao_id válido e tipamos corretamente
+    historico: data.historico.filter(h => h.prescricao_id !== null) as HistoricoItem[]
+  }
+
   return (
-    <EncontristaClient 
-      id={idNum}
-      initialPessoa={pessoa}
-      initialMedicacoes={meds}
-      initialHistorico={historico}
-      baseMedicamentos={baseMedicamentos || []}
+    <EncontristaContainer
+      paciente={pacienteAdaptado}
+      baseMedicamentos={medicamentosAdaptados}
     />
-  );
+  )
 }

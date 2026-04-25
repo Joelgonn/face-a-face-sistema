@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect, useMemo, useTransition } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Transition } from 'framer-motion';
 import { createClient } from '@/app/utils/supabase/client';
 import { zerarSistemaCompleto } from '@/app/actions/system';
 import { Database } from '@/types/supabase'; 
@@ -9,20 +9,31 @@ import {
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
   UserCheck, UserX, Users, Pill, Trash2, AlertTriangle, Shield,
   FileText, CheckCircle2, FileSpreadsheet, Activity, ChevronDown,
-  RefreshCw, RotateCcw, Cloud, Monitor, Smartphone, MessageCircle
+  RefreshCw, RotateCcw, Cloud, Monitor, Smartphone, MessageCircle,
+  Wifi, WifiOff
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import Papa from 'papaparse'; 
 import ChatbotWidget from '@/app/components/ChatbotWidget';
+import { PatientCard } from '@/app/components/PatientCard';
+import { PatientDetail } from '@/app/components/PatientDetail';
+import { createEncontristaRepository } from '@/infra/repositories/encontrista.repository';
+import { calcularStatusPessoa } from '@/domain/medicacao/medicacao.rules';
+import { toggleCheckin } from '@/application/use-cases/toggleCheckin';
+import { criarEncontrista } from '@/application/use-cases/criarEncontrista';
+import { syncOffline, QueueItem } from '@/application/use-cases/syncOffline';
 
-// --- FUNÇÃO SAFE QUERY (VERSÃO SEM ANY) ---
+// --- EASING PREMIUM (iOS-LIKE) ---
+const premiumEasing: [number, number, number, number] = [0.22, 1, 0.36, 1]
+const fastTransition: Transition = { duration: 0.18, ease: premiumEasing }
+const springTransition: Transition = { type: 'spring', stiffness: 350, damping: 28 }
+
+// --- FUNÇÃO SAFE QUERY ---
 async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     const result = await fn()
     
-    // Verifica se é uma resposta do Supabase com erro
     if (result && typeof result === 'object') {
       const possibleError = result as { error?: { message: string } }
       if (possibleError.error) {
@@ -40,7 +51,7 @@ async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
 
 // --- OFFLINE QUEUE (localStorage) ---
 const getQueue = () => {
-  if (typeof window === 'undefined') return[]
+  if (typeof window === 'undefined') return []
   return JSON.parse(localStorage.getItem('offlineQueue') || '[]')
 }
 
@@ -89,7 +100,6 @@ interface OfflineQueueItem {
   status?: boolean;
 }
 
-// --- TIPAGEM CORRETA DO EVENTO PWA ---
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
@@ -100,7 +110,7 @@ export default function DashboardClient({
   isAdminInitial 
 }: DashboardClientProps) {
   
-  const[encontristas, setEncontristas] = useState<EncontristaDashboard[]>(initialEncontristas);
+  const [encontristas, setEncontristas] = useState<EncontristaDashboard[]>(initialEncontristas);
   const [isAdmin] = useState(isAdminInitial);
   const [loading, setLoading] = useState(false); 
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,58 +118,38 @@ export default function DashboardClient({
   const [toast, setToast] = useState<ToastNotification | null>(null);
   
   const [importing, setImporting] = useState(false);
-  const[fileToImport, setFileToImport] = useState<File | null>(null);
-  const[isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const [fileToImport, setFileToImport] = useState<File | null>(null);
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  const[novoNome, setNovoNome] = useState('');
+  const [novoNome, setNovoNome] = useState('');
   const [novoResponsavel, setNovoResponsavel] = useState('');
   const [novasAlergias, setNovasAlergias] = useState('');
   const [novasObservacoes, setNovasObservacoes] = useState('');
   
-  const[isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
   const [checkInTarget, setCheckInTarget] = useState<{id: number, status: boolean, nome: string} | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<EncontristaDashboard | null>(null);
 
-  // --- ESTADO MODO EMERGÊNCIA ---
   const [modoEmergencia, setModoEmergencia] = useState(false);
-  
-  // --- ESTADO DE CONEXÃO ---
-  const[isOnline, setIsOnline] = useState(true);
-  
-  // --- CONTADOR DA FILA OFFLINE ---
+  const [isOnline, setIsOnline] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
-  
-  // --- MODAL DE PENDÊNCIAS ---
   const [showQueue, setShowQueue] = useState(false);
-  
-  // --- MODO SIMPLES (ATIVADO POR PADRÃO PARA EVENTO) ---
-  const[modoSimples, setModoSimples] = useState(true);
-  
-  // --- MENU MOBILE ---
+  const [modoSimples, setModoSimples] = useState(true);
   const [openMenu, setOpenMenu] = useState(false);
-  
-  // --- FEEDBACK VISUAL (FLASH VERDE) ---
   const [flashId, setFlashId] = useState<number | null>(null);
-  const [swipedCardId, setSwipedCardId] = useState<number | null>(null);
-  
-  // --- FAB EXPANDIDO ---
   const [fabOpen, setFabOpen] = useState(false);
-
-  // --- CHATBOT ---
   const [chatbotOpen, setChatbotOpen] = useState(false);
-
-  // --- CONTROLE DE INSTALAÇÃO DO PWA ---
-  const[deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const[showInstallButton, setShowInstallButton] = useState(false);
-
-  // --- TRANSITION PARA EVITAR TRAVAR UI ---
-  const[isPending, startTransition] = useTransition();
+  
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -169,130 +159,164 @@ export default function DashboardClient({
   const updateQueueCount = useCallback(() => {
     const q = getQueue()
     setQueueCount(q.length)
-  },[]);
+  }, []);
 
   const showToast = useCallback((type: 'success' | 'error' | 'warning', title: string, message: string) => {
     setToast({ type, title, message });
     setTimeout(() => setToast(null), 4000); 
-  },[]);
+  }, []);
 
   const totalEncontristas = encontristas.length;
   const totalPresentes = encontristas.filter(p => p.check_in).length;
   const totalAusentes = totalEncontristas - totalPresentes;
 
-  // --- AUTO-FOCO NO INPUT QUANDO MODO SIMPLES ESTIVER ATIVO ---
   useEffect(() => {
     if (modoSimples && inputRef.current) {
       inputRef.current.focus()
     }
   }, [modoSimples])
 
-  // --- CONTROLE DE INSTALAÇÃO DO PWA ---
   useEffect(() => {
     const handler = (e: Event) => {
       const evt = e as BeforeInstallPromptEvent;
-      
       evt.preventDefault();
       setDeferredPrompt(evt);
       setShowInstallButton(true);
-      
-      console.log('[PWA] beforeinstallprompt capturado');
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-    };
-  },[]);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
-
     await deferredPrompt.prompt();
-    
     const choice = await deferredPrompt.userChoice;
     console.log('[PWA] escolha:', choice.outcome);
-
     setDeferredPrompt(null);
     setShowInstallButton(false);
   };
 
-  // --- TOGGLE MODO SIMPLES COM TRANSITION (EVITA TRAVAR UI) ---
   const toggleModoSimples = useCallback(() => {
     startTransition(() => {
       setModoSimples(prev => !prev);
     });
-  },[]);
+  }, []);
 
-  // --- BUSCAR ENCONTRISTAS COM SAFE QUERY ---
+  // --- BUSCAR ENCONTRISTAS COM REPOSITORY ---
   const buscarEncontristas = useCallback(async () => {
-    setLoading(true);
+    setLoading(true)
 
-    const result = await safeQuery(async () => {
-      return await supabase
-        .from('encontristas')
-        .select(`*, prescricoes (id, posologia, horario_inicial, historico_administracao (data_hora))`)
-        .order('nome', { ascending: true })
-    });
+    const supabaseClient = createClient()
+    const repo = createEncontristaRepository(supabaseClient)
+    const { data, error } = await repo.findAll()
 
-    if (result?.data) {
-      setEncontristas((result.data as unknown) as EncontristaDashboard[] ||[]);
+    if (error) {
+      console.error('[DASHBOARD] Erro ao buscar encontristas:', error)
+      showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.')
+      setLoading(false)
+      return
     }
 
-    setLoading(false);
-  }, [supabase]);
+    if (data) {
+      setEncontristas(data)
+    }
 
-  // --- FUNÇÃO DE SINCRONIZAÇÃO INTELIGENTE ---
+    setLoading(false)
+  }, [showToast])
+
+  // --- EVENTO PERSONALIZADO PARA REFRESH ---
+  useEffect(() => {
+    const handleDashboardRefresh = () => {
+      console.log('[DASHBOARD] Refresh manual disparado via evento personalizado')
+      buscarEncontristas()
+    }
+
+    window.addEventListener('dashboard-refresh', handleDashboardRefresh)
+
+    return () => {
+      window.removeEventListener('dashboard-refresh', handleDashboardRefresh)
+    }
+  }, [buscarEncontristas])
+
+  // --- ATUALIZAR AO VOLTAR PARA A PÁGINA (FOCUS) ---
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('[DASHBOARD] Foco na página - recarregando dados')
+      buscarEncontristas()
+    }
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [buscarEncontristas])
+
+  // --- ATUALIZAR QUANDO A ROTA VOLTA (VISIBILITY CHANGE) ---
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[DASHBOARD] Página visível novamente - recarregando dados')
+        buscarEncontristas()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [buscarEncontristas])
+
+  // --- ADAPTADOR UI ↔ DOMÍNIO (STATUS) ---
+  const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
+    const status = calcularStatusPessoa(pessoa)
+    return {
+      cor: status.cor,
+      bordaL: status.bordaL,
+      texto: status.texto,
+      prioridade: status.prioridade,
+      icone: status.icone === 'atrasado' ? <AlertTriangle size={16}/> :
+              status.icone === 'atencao' ? <Clock size={16}/> :
+              status.icone === 'emdia' ? <CheckCircle2 size={16}/> :
+              <Activity size={16}/>
+    }
+  }, []);
+
+   // --- SINCRONIZAÇÃO OFFLINE ---
   const syncOfflineData = useCallback(async () => {
-    const queue = getQueue() as OfflineQueueItem[]
-    if (queue.length === 0) {
+    const supabaseClient = createClient()
+    
+    const result = await syncOffline({
+      getQueue: () => getQueue() as QueueItem[],
+      saveQueue: (queue) => saveQueue(queue),
+      insertNovoPacienteRemote: async (data) => {
+        return await supabaseClient.from('encontristas').insert(data)
+      },
+      updateCheckinRemote: async (id, status) => {
+        return await supabaseClient
+          .from('encontristas')
+          .update({ check_in: status })
+          .eq('id', id)
+      }
+    })
+
+    updateQueueCount()
+    await buscarEncontristas()
+
+    if (result.total === 0) {
       showToast('warning', 'Sincronização', 'Nenhum dado pendente')
       return
     }
 
-    const novaFila: OfflineQueueItem[] =[]
-    let sucessos = 0
-
-    showToast('warning', 'Sincronizando...', `${queue.length} itens pendentes`)
-
-    for (const item of queue) {
-      try {
-        if (item.tipo === 'novo' && item.dados) {
-          const { error } = await supabase.from('encontristas').insert(item.dados)
-          if (error) throw error
-          sucessos++
-        }
-
-        if (item.tipo === 'checkin' && item.id !== undefined && item.status !== undefined) {
-          const { error } = await supabase
-            .from('encontristas')
-            .update({ check_in: item.status })
-            .eq('id', item.id)
-
-          if (error) throw error
-          sucessos++
-        }
-
-      } catch (err) {
-        console.error('Erro ao sincronizar item:', err, item)
-        novaFila.push(item)
-      }
-    }
-
-    saveQueue(novaFila)
-    updateQueueCount()
-
-    await buscarEncontristas()
-
-    if (novaFila.length === 0) {
-      showToast('success', 'Sincronização completa', `${sucessos} itens enviados com sucesso`)
+    if (result.falhas === 0) {
+      showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`)
     } else {
-      showToast('warning', 'Sincronização parcial', `${novaFila.length} itens ainda pendentes`)
+      showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`)
     }
-  },[supabase, buscarEncontristas, showToast, updateQueueCount])
+  }, [buscarEncontristas, showToast, updateQueueCount])
 
-  // --- DETECTAR ONLINE/OFFLINE ---
   useEffect(() => {
     setIsOnline(navigator.onLine)
     updateQueueCount()
@@ -304,7 +328,7 @@ export default function DashboardClient({
 
     const handleOffline = () => {
       setIsOnline(false)
-      showToast('warning', 'Sem internet', 'Modo offline ativado. Dados serão salvos localmente.')
+      showToast('warning', 'Sem internet', 'Modo offline ativado.')
     }
 
     window.addEventListener('online', handleOnline)
@@ -314,114 +338,54 @@ export default function DashboardClient({
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  },[syncOfflineData, updateQueueCount, showToast])
+  }, [syncOfflineData, updateQueueCount, showToast])
 
-  // --- AUTO-RETRY A CADA 30 SEGUNDOS ---
   useEffect(() => {
     const interval = setInterval(() => {
-      if (navigator.onLine) {
-        const queue = getQueue()
-        if (queue.length > 0) {
-          syncOfflineData()
-        }
+      if (navigator.onLine && getQueue().length > 0) {
+        syncOfflineData()
       }
     }, 30000)
-
     return () => clearInterval(interval)
   }, [syncOfflineData])
 
-  // --- EVENTO DE SYNC DO SERVICE WORKER (PWA) ---
   useEffect(() => {
     const handleSyncFromSW = () => {
       console.log('[PWA] Sincronizando dados offline via Service Worker')
       syncOfflineData()
     }
-    
     window.addEventListener('sync-offline-data', handleSyncFromSW)
-    
-    return () => {
-      window.removeEventListener('sync-offline-data', handleSyncFromSW)
-    }
+    return () => window.removeEventListener('sync-offline-data', handleSyncFromSW)
   }, [syncOfflineData])
 
-  // --- RELOAD DE DADOS ---
   const reloadData = async () => {
     await buscarEncontristas()
     showToast('success', 'Atualizado', 'Dados sincronizados com o servidor')
   }
 
-  // --- HARD RELOAD (RECARREGAR SISTEMA COMPLETO) ---
   const hardReload = () => {
     window.location.reload()
   }
 
-  // --- FUNÇÃO OTIMIZADA DE STATUS (MEMOIZADA POR PESSOA) ---
-  const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
-    if (!pessoa.prescricoes || pessoa.prescricoes.length === 0) {
-      return { 
-        cor: 'bg-slate-100 text-slate-700 border-slate-200', 
-        bordaL: 'border-l-slate-300',
-        texto: 'Sem Meds', prioridade: 0, icone: <Activity size={12}/> 
-      };
-    }
-    
-    let statusGeral = 3; 
-    
-    for (const med of pessoa.prescricoes) {
-      if (!med.posologia || !med.horario_inicial) continue;
-
-      const match = med.posologia.match(/(\d+)\s*(?:h|hora)/i);
-      if (!match) continue; 
-      
-      const intervaloHoras = parseInt(match[1]);
-      const historico = med.historico_administracao?.sort((a, b) => 
-        new Date(b.data_hora as string).getTime() - new Date(a.data_hora as string).getTime()
-      );
-      const ultimoRegistro = historico?.[0];
-      
-      const dataBase = ultimoRegistro?.data_hora 
-        ? new Date(new Date(ultimoRegistro.data_hora as string).getTime() + intervaloHoras * 60 * 60 * 1000)
-        : (() => {
-            const[hora, minuto] = med.horario_inicial.split(':').map(Number);
-            const hoje = new Date();
-            return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), hora, minuto);
-          })();
-
-      const diffMinutos = (dataBase.getTime() - new Date().getTime()) / 1000 / 60;
-      
-      if (diffMinutos < 0) { statusGeral = 1; break; } 
-      else if (diffMinutos < 30) { statusGeral = Math.min(statusGeral, 2); } 
-    }
-
-    if (statusGeral === 1) return { cor: 'bg-rose-100 text-rose-800 border-rose-200', bordaL: 'border-l-rose-500', texto: 'Atrasado', prioridade: 3, icone: <AlertTriangle size={12}/> };
-    if (statusGeral === 2) return { cor: 'bg-amber-100 text-amber-800 border-amber-200', bordaL: 'border-l-amber-500', texto: 'Atenção', prioridade: 2, icone: <Clock size={12}/> };
-    return { cor: 'bg-emerald-100 text-emerald-800 border-emerald-200', bordaL: 'border-l-emerald-500', texto: 'Em Dia', prioridade: 1, icone: <CheckCircle2 size={12}/> };
-  },[]);
-
-  // --- FILTRO MEMOIZADO ---
   const filtered = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return encontristas;
-
     return encontristas.filter(p => {
       const nome = p.nome || '';
       const responsavel = p.responsavel || '';
       const id = String(p.id);
-
       return nome.toLowerCase().includes(term) || responsavel.toLowerCase().includes(term) || id.includes(term);
     });
   }, [encontristas, searchTerm]);
 
-  // --- MAPA DE STATUS MEMOIZADO (CACHE POR PESSOA) ---
   const statusMap = useMemo(() => {
     const map = new Map();
     for (const pessoa of filtered) {
       map.set(pessoa.id, getStatusPessoa(pessoa));
     }
     return map;
-  },[filtered, getStatusPessoa]);
+  }, [filtered, getStatusPessoa]);
 
-  // --- SORTED MEMOIZADO COM USO DO MAPA DE STATUS ---
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
       const statusA = statusMap.get(a.id);
@@ -431,122 +395,112 @@ export default function DashboardClient({
   }, [filtered, statusMap]);
 
   const getConnectionStatus = () => {
-    if (!isOnline) return { text: '🔴 Offline', bg: 'bg-rose-100 text-rose-700' }
-    if (queueCount > 0) return { text: '🟡 Pendente', bg: 'bg-amber-100 text-amber-700' }
-    return { text: '🟢 Online', bg: 'bg-emerald-100 text-emerald-700' }
+    if (!isOnline) return { text: 'Offline', bg: 'bg-rose-100 text-rose-700', icon: <WifiOff size={12} className="inline mr-1" /> }
+    if (queueCount > 0) return { text: 'Pendente', bg: 'bg-amber-100 text-amber-700', icon: <Cloud size={12} className="inline mr-1" /> }
+    return { text: 'Online', bg: 'bg-emerald-100 text-emerald-700', icon: <Wifi size={12} className="inline mr-1" /> }
   }
 
   const connectionStatus = getConnectionStatus()
 
-  const requestCheckIn = (id: number, currentStatus: boolean | null, nome: string) => {
-    setCheckInTarget({ id, status: currentStatus || false, nome });
+  const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => {
+    setCheckInTarget({ id, status: currentStatus, nome });
   };
 
   const confirmCheckIn = async () => {
-    if (!checkInTarget) return;
+    if (!checkInTarget) return
     
     if (modoEmergencia) {
       showToast('warning', 'Modo emergência', 'Ação bloqueada')
       return
     }
 
-    const { id, status } = checkInTarget;
-    const novoStatus = !status;
-    
+    const { id, status } = checkInTarget
+
     setFlashId(id)
     setTimeout(() => setFlashId(null), 300)
-    
+
     if (navigator.vibrate) {
       navigator.vibrate(50)
     }
-    
-    if (!navigator.onLine) {
-      addToQueue({
-        tipo: 'checkin',
-        id: id,
-        status: novoStatus
-      } as OfflineQueueItem)
-      updateQueueCount()
-      
-      setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: novoStatus } : p));
-      setCheckInTarget(null);
-      setSwipedCardId(null);
-      showToast('warning', 'Offline', 'Check-in salvo localmente. Será sincronizado quando a internet voltar.')
+
+    const backup = [...encontristas]
+
+    setEncontristas(prev =>
+      prev.map(p => p.id === id ? { ...p, check_in: !status } : p)
+    )
+
+    setCheckInTarget(null)
+
+    const result = await toggleCheckin(
+      { id, statusAtual: status, isOnline },
+      {
+        updateRemote: async (id, status) => {
+          return await supabase.from('encontristas').update({ check_in: status }).eq('id', id)
+        },
+        addToQueue: (item) => {
+          addToQueue(item)
+          updateQueueCount()
+        }
+      }
+    )
+
+    if (result.queued) {
+      showToast('warning', 'Offline', 'Check-in salvo localmente.')
       return
     }
-    
-    const backup = [...encontristas];
-    setEncontristas(prev => prev.map(p => p.id === id ? { ...p, check_in: novoStatus } : p));
-    setCheckInTarget(null);
-    setSwipedCardId(null);
-    
-    const { error } = await supabase.from('encontristas').update({ check_in: novoStatus }).eq('id', id);
-    
-    if (error) {
-      setEncontristas(backup);
-      showToast('error', 'Erro de conexão', 'Clique em "Recarregar Sistema"');
+
+    if (result.shouldRollback) {
+      setEncontristas(backup)
+      showToast('error', 'Erro', 'Falha ao atualizar no servidor')
     }
   };
 
   const cancelCheckIn = () => {
     setCheckInTarget(null);
-    setSwipedCardId(null);
   };
 
   const handleSalvar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+    e.preventDefault()
+
     if (modoEmergencia) {
       showToast('warning', 'Modo emergência', 'Ação bloqueada')
       return
     }
-    
-    if (!novoNome.trim()) {
-        showToast('warning', 'Atenção', 'O nome do encontrista é obrigatório.');
-        return;
-    }
-    
-    if (!navigator.onLine) {
-      addToQueue({
-        tipo: 'novo',
-        dados: {
-          nome: novoNome,
-          responsavel: novoResponsavel,
-          alergias: novasAlergias,
-          observacoes: novasObservacoes,
-          check_in: false
+
+    setSaving(true)
+
+    const result = await criarEncontrista(
+      { nome: novoNome, responsavel: novoResponsavel, alergias: novasAlergias, observacoes: novasObservacoes, isOnline },
+      {
+        insertRemote: async (data) => {
+          return await supabase.from('encontristas').insert(data)
+        },
+        addToQueue: (item) => {
+          addToQueue(item)
+          updateQueueCount()
         }
-      } as OfflineQueueItem)
-      updateQueueCount()
-      
-      showToast('warning', 'Offline', 'Paciente salvo localmente. Será sincronizado quando a internet voltar.')
-      setNovoNome('')
-      setNovoResponsavel('')
-      setNovasAlergias('')
-      setNovasObservacoes('')
+      }
+    )
+
+    if (result.queued) {
+      showToast('warning', 'Offline', 'Paciente salvo localmente.')
+      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
       setIsModalOpen(false)
+      setSaving(false)
       return
     }
-    
-    setSaving(true);
-    
-    const { error } = await supabase.from('encontristas').insert({ 
-      nome: novoNome, 
-      responsavel: novoResponsavel, 
-      alergias: novasAlergias, 
-      observacoes: novasObservacoes, 
-      check_in: false 
-    });
 
-    if (!error) {
-      setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes(''); 
-      setIsModalOpen(false); 
-      showToast('success', 'Cadastrado!', `${novoNome} adicionado.`);
-      buscarEncontristas();
-    } else {
-      showToast('error', 'Erro de conexão', 'Clique em "Recarregar Sistema"');
+    if (!result.success) {
+      showToast('warning', 'Atenção', result.error || 'Erro ao salvar')
+      setSaving(false)
+      return
     }
-    setSaving(false);
+
+    showToast('success', 'Cadastrado!', `${novoNome} adicionado.`)
+    setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
+    setIsModalOpen(false)
+    await buscarEncontristas()
+    setSaving(false)
   };
 
   const handleZerarSistema = async (e: React.FormEvent) => {
@@ -566,6 +520,7 @@ export default function DashboardClient({
       await buscarEncontristas();
       setIsResetModalOpen(false);
       setResetPassword('');
+      setSelectedPatient(null);
       showToast('success', 'Sistema Zerado', 'Dados limpos com sucesso.');
     } else {
       setResetError(resultado.message);
@@ -578,13 +533,11 @@ export default function DashboardClient({
       showToast('warning', 'Modo emergência', 'Ação bloqueada')
       return
     }
-    
     const file = event.target.files?.[0];
     if (file) { setFileToImport(file); setIsImportConfirmOpen(true); }
     event.target.value = '';
   };
 
-  // --- IMPORTAÇÃO CSV ---
   const processFileImport = () => {
     if (!fileToImport) return;
     setImporting(true);
@@ -598,7 +551,7 @@ export default function DashboardClient({
           observacoes: string | null;
           responsavel: string | null;
           check_in: boolean;
-        }[] =[];
+        }[] = [];
         
         for (const parts of results.data as string[][]) {
           if (parts.length >= 2 && !(parts[0] && parts[0].trim().startsWith('#'))) {
@@ -616,7 +569,7 @@ export default function DashboardClient({
         }
         
         if (registros.length === 0) {
-          showToast('warning', 'Atenção', 'Nenhum registro válido encontrado no arquivo.');
+          showToast('warning', 'Atenção', 'Nenhum registro válido encontrado.');
           setImporting(false);
           setIsImportConfirmOpen(false);
           setFileToImport(null);
@@ -631,7 +584,7 @@ export default function DashboardClient({
           showToast('success', 'Importação Concluída', `${registros.length} registros importados.`);
           await buscarEncontristas();
         } else {
-          showToast('error', 'Falha na Importação', 'Nenhum dado foi importado. Clique em "Recarregar Sistema".');
+          showToast('error', 'Falha na Importação', 'Nenhum dado foi importado.');
         }
         
         setImporting(false);
@@ -639,216 +592,250 @@ export default function DashboardClient({
         setFileToImport(null);
       },
       error: () => {
-        showToast('error', 'Erro de Leitura', 'Falha na leitura do arquivo. Clique em "Recarregar Sistema".');
+        showToast('error', 'Erro de Leitura', 'Falha na leitura do arquivo.');
         setImporting(false);
       }
     });
   };
 
-  const handleSwipeCheckIn = async (id: number, currentStatus: boolean | null, nome: string) => {
-    requestCheckIn(id, currentStatus, nome)
+  const handlePatientCheckIn = (id: number, currentStatus: boolean, nome: string) => {
+    requestCheckIn(id, currentStatus, nome);
+    setTimeout(() => confirmCheckIn(), 100);
+  };
+
+  const handleNavigateToPatientPage = (id: number) => {
+    setSelectedPatient(null)
     setTimeout(() => {
-      confirmCheckIn()
-    }, 100)
+      router.push(`/dashboard/encontrista/${id}`)
+    }, 150)
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-24">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24">
       
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-4 md:px-8">
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
         <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-             <Image src="/favicon.ico" alt="Logo" width={36} height={36} className="w-9 h-9 rounded-xl shadow-sm" />
-             <h1 className="text-xl md:text-2xl font-black text-orange-600 flex items-center gap-2">
-               Face a Face <span className="hidden sm:inline-block text-[10px] font-black tracking-widest text-orange-500 bg-orange-50 px-3 py-1 rounded-full uppercase">Igreja Batista Apascentar</span>
-             </h1>
+            <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-md flex items-center justify-center">
+              <span className="text-white font-black text-sm">FF</span>
+            </div>
+            <h1 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2">
+              Face a Face <span className="hidden sm:inline-block text-[10px] font-black tracking-widest text-orange-500 bg-orange-50 px-3 py-1 rounded-full border border-orange-100">Igreja Batista Apascentar</span>
+            </h1>
           </div>
           
           <div className="flex items-center gap-2">
-            {/* BOTÃO DE INSTALAÇÃO DO PWA */}
             {showInstallButton && modoSimples && (
-              <button
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
                 onClick={handleInstallClick}
-                className="px-3 py-2 rounded-xl bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-colors flex items-center gap-1"
+                className="px-3 py-2 rounded-xl bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-colors flex items-center gap-1 shadow-md"
               >
                 📱 Instalar App
-              </button>
-
+              </motion.button>
             )}
 
-            {/* BOTÃO TOGGLE MODO SIMPLES COM TRANSITION */}
             <div className="hidden md:flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!modoSimples) toggleModoSimples()
-                }}
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
+                onClick={() => { if (!modoSimples) toggleModoSimples() }}
                 disabled={isPending}
-                title="Modo simples"
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${
-                  modoSimples
-                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/25'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                }`}
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${modoSimples ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
               >
                 <Smartphone size={16} />
                 <span className="hidden sm:inline">Simples</span>
-              </button>
+              </motion.button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (modoSimples) toggleModoSimples()
-                }}
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
+                onClick={() => { if (modoSimples) toggleModoSimples() }}
                 disabled={isPending}
-                title="Modo completo"
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${
-                  !modoSimples
-                    ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                }`}
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-xs font-black transition-all disabled:opacity-50 ${!modoSimples ? 'bg-slate-700 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
               >
                 <Monitor size={16} />
                 <span className="hidden sm:inline">Completo</span>
-              </button>
+              </motion.button>
             </div>
 
             {!modoSimples && (
               <div className={`hidden sm:block px-3 py-1.5 rounded-full text-xs font-bold ${connectionStatus.bg}`}>
-                {connectionStatus.text}
+                {connectionStatus.icon} {connectionStatus.text}
               </div>
             )}
 
             <div className={modoSimples ? 'relative md:hidden' : 'relative'}>
-                <button
-                  onClick={() => setOpenMenu(!openMenu)}
-                  className="p-2.5 bg-orange-600 text-white rounded-xl shadow-lg shadow-orange-600/25 hover:bg-orange-700 transition-colors"
-                  aria-label="Abrir menu"
-                  title="Menu"
-                >
-                  ☰
-                </button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
+                onClick={() => setOpenMenu(!openMenu)}
+                className="p-2.5 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl shadow-md"
+              >
+                ☰
+              </motion.button>
 
-                <AnimatePresence>
-                  {openMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-50"
-                    >
-                      <button 
-                        onClick={() => { reloadData(); setOpenMenu(false); }} 
-                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3"
-                      >
-                        <RefreshCw size={18} className="text-slate-600" />
-                        Recarregar Dados
-                      </button>
-                      <button 
-                        onClick={() => { hardReload(); setOpenMenu(false); }} 
-                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3"
-                      >
-                        <RotateCcw size={18} className="text-slate-600" />
-                        Recarregar Sistema
-                      </button>
-                      <button 
-                        onClick={() => { setModoEmergencia(!modoEmergencia); setOpenMenu(false); }} 
-                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3"
-                      >
-                        <AlertTriangle size={18} className="text-amber-600" />
-                        Modo Emergência {modoEmergencia && '(Ativo)'}
-                      </button>
-                      <button 
-                        onClick={() => { setShowQueue(true); setOpenMenu(false); }} 
-                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3"
-                      >
-                        <Cloud size={18} className="text-slate-600" />
-                        Pendências ({queueCount})
-                      </button>
-                      
-                      {isAdmin && (
-                        <>
-                          <div className="border-t border-slate-100 my-1"></div>
-                          <Link href="/dashboard/relatorio" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3">
-                            <FileText size={18} className="text-slate-600" />
-                            Relatório
-                          </Link>
-                          <Link href="/dashboard/equipe" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3">
-                            <Shield size={18} className="text-slate-600" />
-                            Equipe
-                          </Link>
-                          <Link href="/dashboard/medicamentos" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-100 active:scale-95 transition-all text-base font-semibold text-slate-800 flex items-center gap-3">
-                            <Pill size={18} className="text-slate-600" />
-                            Farmácia
-                          </Link>
-                        </>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors">
-                <LogOut size={22}/>
-            </button>
+              <AnimatePresence>
+                {openMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={fastTransition}
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50"
+                  >
+                    <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { reloadData(); setOpenMenu(false); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                      <RefreshCw size={18} className="text-slate-500" /> Recarregar Dados
+                    </motion.button>
+                    <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { hardReload(); setOpenMenu(false); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                      <RotateCcw size={18} className="text-slate-500" /> Recarregar Sistema
+                    </motion.button>
+                    <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { setModoEmergencia(!modoEmergencia); setOpenMenu(false); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                      <AlertTriangle size={18} className="text-amber-500" /> Modo Emergência {modoEmergencia && '(Ativo)'}
+                    </motion.button>
+                    <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { setShowQueue(true); setOpenMenu(false); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                      <Cloud size={18} className="text-slate-500" /> Pendências ({queueCount})
+                    </motion.button>
+                    
+                    {isAdmin && (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <Link href="/dashboard/relatorio" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                          <FileText size={18} className="text-slate-500" /> Relatório
+                        </Link>
+                        <Link href="/dashboard/equipe" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                          <Shield size={18} className="text-slate-500" /> Equipe
+                        </Link>
+                        <Link href="/dashboard/medicamentos" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
+                          <Pill size={18} className="text-slate-500" /> Farmácia
+                        </Link>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <motion.button 
+              whileTap={{ scale: 0.95 }}
+              transition={fastTransition}
+              onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} 
+              className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+            >
+              <LogOut size={22}/>
+            </motion.button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
         
-        {!modoSimples && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <button 
-                  onClick={() => setShowStats(!showStats)} 
-                  className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
-              >
-                  <div className="flex items-center gap-3">
-                      <Activity className="text-orange-500 w-5 h-5" />
-                      <span className="font-bold text-slate-700">Visão Geral</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-4">
-                      {!showStats && (
-                          <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
-                              <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
-                              <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
-                              <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
-                          </div>
-                      )}
-                      <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
-                  </div>
-              </button>
-
-              <div className={`transition-all duration-300 ease-in-out origin-top ${showStats ? 'max-h-40 border-t border-slate-100 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
-                      <div className="p-4 flex flex-col items-center justify-center text-center">
-                          <Users size={20} className="text-blue-500 mb-1" />
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
-                          <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
-                      </div>
-                      <div className="p-4 flex flex-col items-center justify-center text-center">
-                          <UserCheck size={20} className="text-emerald-500 mb-1" />
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
-                          <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
-                      </div>
-                      <div className="p-4 flex flex-col items-center justify-center text-center">
-                          <UserX size={20} className="text-rose-500 mb-1" />
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
-                          <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
-                      </div>
-                  </div>
+        {/* MINI STATS BAR PARA MOBILE (visível apenas em modo simples) */}
+        {modoSimples && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={fastTransition}
+            className="px-0 mt-0"
+          >
+            <div className="flex items-center justify-between bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
+              
+              {/* STATS MINI */}
+              <div className="flex items-center gap-4 text-[11px] font-black tracking-wide">
+                <motion.span
+                  key={totalEncontristas}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-slate-600"
+                >
+                  👥 {totalEncontristas}
+                </motion.span>
+                <motion.span
+                  key={totalPresentes}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-emerald-600"
+                >
+                  ✅ {totalPresentes}
+                </motion.span>
+                <motion.span
+                  key={totalAusentes}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-rose-600"
+                >
+                  ❌ {totalAusentes}
+                </motion.span>
               </div>
-          </div>
+
+              {/* STATUS CONEXÃO */}
+              <div className={`text-[10px] px-2 py-1 rounded-full font-bold ${connectionStatus.bg}`}>
+                {connectionStatus.icon} {connectionStatus.text}
+                {queueCount > 0 && <span className="ml-1 bg-white/50 px-1 rounded-full">{queueCount}</span>}
+              </div>
+            </div>
+          </motion.div>
         )}
 
+        {/* STATS EXPANDIBLE (apenas desktop, mantido como estava) */}
+        {!modoSimples && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Activity className="text-orange-500 w-5 h-5" />
+                <span className="font-bold text-slate-700">Visão Geral</span>
+              </div>
+              <div className="flex items-center gap-4">
+                {!showStats && (
+                  <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
+                    <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
+                    <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
+                    <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
+                  </div>
+                )}
+                <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {showStats && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={fastTransition} className="border-t border-slate-100">
+                  <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <Users size={20} className="text-blue-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
+                      <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
+                    </div>
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <UserCheck size={20} className="text-emerald-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
+                      <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
+                    </div>
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <UserX size={20} className="text-rose-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
+                      <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* SEARCH BAR */}
         <div className="flex flex-col gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
             <input 
               ref={inputRef}
               type="text" 
-              placeholder={modoSimples ? "Buscar por ID ou nome..." : "Buscar por paciente, responsável ou ID..."}
+              placeholder={modoSimples ? "Buscar por nome ou ID..." : "Buscar por paciente, responsável ou ID..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-orange-500/10 font-medium text-slate-700 shadow-sm transition-all text-base"
@@ -858,440 +845,391 @@ export default function DashboardClient({
           {!modoSimples && isAdmin && (
             <div className="hidden sm:flex gap-2">
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
-              <button onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
-                  <Upload size={20} /> <span className="hidden lg:inline">Importar</span>
-              </button>
-              <button onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
-                  <Trash2 size={20} /> <span className="hidden lg:inline">Zerar</span>
-              </button>
+              <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
+                <Upload size={20} /> <span className="hidden lg:inline">Importar</span>
+              </motion.button>
+              <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
+                <Trash2 size={20} /> <span className="hidden lg:inline">Zerar</span>
+              </motion.button>
             </div>
           )}
         </div>
 
-        {/* LISTA MOBILE COM STATUS DO MAPA CACHEADO */}
-        <div className={modoSimples ? 'space-y-4' : 'md:hidden space-y-4'}>
-          {loading ? <div className="text-center py-12 text-slate-400"><Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>Carregando...</div> : sorted.length === 0 ? <div className="text-center py-12 text-slate-400 font-bold">Nenhum paciente encontrado.</div> : sorted.map((pessoa) => {
-             const status = statusMap.get(pessoa.id);
-             return (
+        {/* LISTA MOBILE COM PROFUNDIDADE + LAYOUTID MAGIC */}
+        <div className={modoSimples ? 'space-y-3' : 'md:hidden space-y-3'}>
+          <AnimatePresence mode="wait">
+            {!selectedPatient && (
               <motion.div
-                key={pessoa.id}
-                drag="x"
-                dragConstraints={{ left: -80, right: 0 }}
-                dragElastic={0.7}
-                animate={{ x: swipedCardId === pessoa.id ? -80 : 0 }}
-                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                onDragEnd={(_event, info) => {
-                  if (info.offset.x < -60) {
-                    setSwipedCardId(pessoa.id)
-                    handleSwipeCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)
-                  } else {
-                    setSwipedCardId(null)
-                  }
-                }}
-                className="relative"
+                key="list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={fastTransition}
               >
-                <div className={`absolute right-0 top-0 h-full w-20 flex items-center justify-center rounded-2xl shadow-lg transition-colors ${
-                  pessoa.check_in ? 'bg-emerald-500' : 'bg-slate-200'
-                }`}>
-                  {pessoa.check_in ? (
-                    <CheckCircle2 size={28} className="text-white" />
-                  ) : (
-                    <UserX size={28} className="text-slate-500" />
-                  )}
-                </div>
-                
-                <div className={`
-                  bg-white rounded-[2rem] border-l-8 ${status?.bordaL || 'border-l-slate-300'}
-                  shadow-md border-y border-r border-slate-100 overflow-hidden
-                  transition-all duration-300
-                  ${flashId === pessoa.id ? 'bg-emerald-100 scale-[1.02]' : ''}
-                `}>
-                  <div className="p-5">
-                      <div className="flex justify-between items-start gap-3">
-                          <div className="flex gap-4 min-w-0">
-                              <div className="w-12 h-12 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 shrink-0 text-sm shadow-inner">
-                                  {pessoa.id}
-                              </div>
-                              <div className="min-w-0">
-                                  <Link href={`/dashboard/encontrista/${pessoa.id}`} className="text-lg font-black text-slate-800 leading-tight block mb-1 truncate">
-                                      {pessoa.nome}
-                                  </Link>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                      <span className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-black uppercase tracking-wide ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
-                                          {status?.icone} {status?.texto}
-                                      </span>
-                                  </div>
-                                  {pessoa.responsavel && <p className="text-xs text-slate-500 font-medium mt-2 truncate">Resp: {pessoa.responsavel}</p>}
-                              </div>
-                          </div>
-                          <button
-                            onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)}
-                            title={pessoa.check_in ? 'Presente' : 'Ausente'}
-                            aria-label={pessoa.check_in ? 'Presente' : 'Ausente'}
-                            className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 border-2 transition-all active:scale-95 ${
-                              pessoa.check_in
-                                ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/30'
-                                : 'bg-slate-100 text-slate-400 border-slate-200 shadow-sm hover:bg-slate-200 hover:text-slate-600'
-                            }`}
-                          >
-                              {pessoa.check_in ? <UserCheck size={28}/> : <UserX size={28}/>}
-                          </button>
-                      </div>
-
-                      {pessoa.alergias && (
-                          <div className="mt-4 flex items-start gap-3 bg-rose-50 p-3.5 rounded-2xl border border-rose-100">
-                              <AlertCircle className="w-5 h-5 text-rose-500 shrink-0"/>
-                              <div>
-                                  <p className="text-[10px] font-black uppercase text-rose-400 tracking-widest mb-0.5">Alergia / Atenção</p>
-                                  <p className="text-xs text-rose-700 font-bold leading-tight">{pessoa.alergias}</p>
-                              </div>
-                          </div>
-                      )}
+                {loading ? (
+                  <div className="text-center py-12 text-slate-400">
+                    <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/>
+                    <span className="font-medium">Carregando...</span>
                   </div>
-                </div>
+                ) : sorted.length === 0 ? (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={fastTransition}
+                    className="text-center py-16 bg-white rounded-2xl border border-slate-100"
+                  >
+                    <Search size={48} className="text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-400 font-bold">Nenhum paciente encontrado.</p>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => setIsModalOpen(true)}
+                        className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold"
+                      >
+                        + Adicionar primeiro paciente
+                      </button>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    animate={{ 
+                      scale: selectedPatient ? 0.96 : 1,
+                      filter: selectedPatient ? 'blur(3px)' : 'blur(0px)'
+                    }}
+                    transition={fastTransition}
+                  >
+                    {sorted.map((pessoa, index) => (
+                      <motion.div
+                        key={pessoa.id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ 
+                          delay: index * 0.025, 
+                          duration: 0.18, 
+                          ease: premiumEasing 
+                        }}
+                      >
+                        <PatientCard
+                          id={pessoa.id}
+                          nome={pessoa.nome}
+                          responsavel={pessoa.responsavel}
+                          alergias={pessoa.alergias}
+                          status={statusMap.get(pessoa.id)}
+                          checkIn={pessoa.check_in || false}
+                          flashId={flashId}
+                          onCheckIn={handlePatientCheckIn}
+                          onClick={() => setSelectedPatient(pessoa)}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
               </motion.div>
-             )
-          })}
+            )}
+
+            {selectedPatient && (
+              <PatientDetail
+                key="detail"
+                paciente={selectedPatient}
+                onClose={() => setSelectedPatient(null)}
+              />
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* LISTA DESKTOP COM STATUS DO MAPA CACHEADO */}
+        {/* LISTA DESKTOP COM PROFUNDIDADE */}
         {!modoSimples && (
-          <div className="hidden md:block space-y-3">
-              
-              <div className="grid grid-cols-12 gap-4 px-8 py-2 text-slate-400 text-[11px] uppercase tracking-[0.15em] font-black">
-                  <div className="col-span-2">Status</div>
-                  <div className="col-span-4 pl-2">Paciente</div>
-                  <div className="col-span-2 text-center">Check-in</div>
-                  <div className="col-span-2">Responsável</div>
-                  <div className="col-span-2">Alergias</div>
+          <motion.div
+            animate={{ 
+              scale: selectedPatient ? 0.96 : 1,
+              filter: selectedPatient ? 'blur(3px)' : 'blur(0px)'
+            }}
+            transition={fastTransition}
+            className="hidden md:block space-y-3"
+          >
+            <div className="grid grid-cols-12 gap-4 px-8 py-2 text-slate-400 text-[11px] uppercase tracking-[0.15em] font-black">
+              <div className="col-span-2">Status</div>
+              <div className="col-span-4 pl-2">Paciente</div>
+              <div className="col-span-2 text-center">Check-in</div>
+              <div className="col-span-2">Responsável</div>
+              <div className="col-span-2">Alergias</div>
+            </div>
+
+            {loading ? (
+              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+                Carregando lista...
               </div>
+            ) : sorted.length === 0 ? (
+              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
+                Nenhum resultado encontrado.
+              </div>
+            ) : (
+              <AnimatePresence>
+                <div className="space-y-2">
+                  {sorted.map((pessoa, index) => {
+                    const status = statusMap.get(pessoa.id);
+                    return (
+                      <motion.div 
+                        key={pessoa.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ 
+                          delay: index * 0.02, 
+                          duration: 0.18, 
+                          ease: premiumEasing 
+                        }}
+                        className={`group grid grid-cols-12 gap-4 items-center bg-white hover:bg-orange-50/40 rounded-xl border-l-4 ${status?.bordaL || 'border-l-slate-300'} border-y border-r border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 p-3 px-5 cursor-pointer`}
+                        onClick={() => handleNavigateToPatientPage(pessoa.id)}
+                      >
+                        <div className="col-span-2">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border transition-colors ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
+                            {status?.icone} {status?.texto}
+                          </span>
+                        </div>
 
-              {loading ? (
-                  <div className="bg-white rounded-3xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
-                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-                      Carregando lista...
-                  </div>
-              ) : sorted.length === 0 ? (
-                  <div className="bg-white rounded-3xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">
-                      Nenhum resultado encontrado.
-                  </div>
-              ) : (
-                  <div className="space-y-3">
-                      {sorted.map((pessoa) => {
-                          const status = statusMap.get(pessoa.id);
-                          return (
-                              <div key={pessoa.id} className={`group grid grid-cols-12 gap-4 items-center bg-white hover:bg-orange-50/40 rounded-3xl border-l-8 ${status?.bordaL || 'border-l-slate-300'} border-y border-r border-slate-100 shadow-sm hover:shadow-xl hover:shadow-orange-500/15 hover:scale-[1.01] transition-all duration-300 p-4 px-6`}>
-                                  
-                                  <div className="col-span-2">
-                                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-colors ${status?.cor || 'bg-slate-100 text-slate-700'}`}>
-                                          {status?.icone} {status?.texto}
-                                      </span>
-                                  </div>
+                        <div className="col-span-4 flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 text-xs shrink-0 shadow-inner group-hover:bg-orange-500 group-hover:text-white transition-colors duration-200">
+                            {pessoa.id}
+                          </div>
+                          <span className="font-bold text-slate-800 text-base group-hover:text-orange-600 transition-colors truncate">
+                            {pessoa.nome}
+                          </span>
+                        </div>
 
-                                  <div className="col-span-4 flex items-center gap-4 min-w-0">
-                                      <div className="w-10 h-10 bg-orange-100 border border-orange-200 rounded-full flex items-center justify-center font-black text-orange-700 text-sm shrink-0 shadow-inner group-hover:bg-orange-500 group-hover:text-white transition-colors duration-300">
-                                          {pessoa.id}
-                                      </div>
-                                      <Link href={`/dashboard/encontrista/${pessoa.id}`} className="font-black text-slate-800 text-lg group-hover:text-orange-600 transition-colors truncate">
-                                          {pessoa.nome}
-                                      </Link>
-                                  </div>
+                        <div className="col-span-2 flex justify-center">
+                          <motion.button 
+                            whileTap={{ scale: 0.95 }}
+                            transition={fastTransition}
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              handlePatientCheckIn(pessoa.id, pessoa.check_in || false, pessoa.nome); 
+                            }} 
+                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black border shadow-sm transition-all ${pessoa.check_in ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                          >
+                            {pessoa.check_in ? <UserCheck size={14} /> : <UserX size={14} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
+                          </motion.button>
+                        </div>
 
-                                  <div className="col-span-2 flex justify-center">
-                                      <button onClick={() => requestCheckIn(pessoa.id, pessoa.check_in, pessoa.nome)} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black border shadow-sm transition-all ${pessoa.check_in ? 'bg-emerald-50 text-emerald-800 border-emerald-200 group-hover:bg-emerald-100' : 'bg-white text-slate-500 border-slate-200 group-hover:bg-white group-hover:border-slate-300'}`}>
-                                          {pessoa.check_in ? <UserCheck size={16} /> : <UserX size={16} />} {pessoa.check_in ? 'Presente' : 'Ausente'}
-                                      </button>
-                                  </div>
+                        <div className="col-span-2 text-slate-500 font-medium text-sm truncate pr-3">
+                          {pessoa.responsavel || <span className="text-slate-300">-</span>}
+                        </div>
 
-                                  <div className="col-span-2 text-slate-500 font-bold text-sm truncate pr-4">
-                                      {pessoa.responsavel || '-'}
-                                  </div>
-
-                                  <div className="col-span-2 min-w-0">
-                                      {pessoa.alergias ? (
-                                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-100 max-w-full" title={pessoa.alergias}>
-                                              <AlertCircle size={14} className="shrink-0" /> 
-                                              <span className="truncate">{pessoa.alergias}</span>
-                                          </span>
-                                      ) : (
-                                          <span className="text-slate-300 text-xs font-bold">-</span>
-                                      )}
-                                  </div>
-
-                              </div>
-                          )
-                      })}
-                  </div>
-              )}
-          </div>
+                        <div className="col-span-2 min-w-0">
+                          {pessoa.alergias ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-100 max-w-full" title={pessoa.alergias}>
+                              <AlertCircle size={12} className="shrink-0" /> 
+                              <span className="truncate">{pessoa.alergias}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 text-[11px] font-medium">-</span>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </AnimatePresence>
+            )}
+          </motion.div>
         )}
 
       </main>
 
-      {/* FAB DE AÇÕES */}
+      {/* FAB BUTTON */}
       {!chatbotOpen && (
-      <div className="fixed bottom-6 right-6 z-50">
-        
-        <AnimatePresence>
-          {fabOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.96 }}
-              className="flex flex-col items-end gap-3 mb-4"
-            >
-              <button
-                onClick={() => {
-                  setChatbotOpen(true)
-                  setFabOpen(false)
-                }}
-                className="bg-orange-600 text-white shadow-xl shadow-orange-600/25 px-5 py-3 rounded-2xl font-black flex items-center gap-2 text-sm active:scale-95 transition-all"
+        <div className="fixed bottom-6 right-6 z-40">
+          <AnimatePresence>
+            {fabOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                transition={fastTransition}
+                className="flex flex-col items-end gap-2 mb-4"
               >
-                <MessageCircle size={18} />
-                Chat
-              </button>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => { setChatbotOpen(true); setFabOpen(false); }} className="bg-white text-slate-700 shadow-lg px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-sm border border-slate-200">
+                  <MessageCircle size={18} className="text-orange-500" /> Chat
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => { setIsModalOpen(true); setFabOpen(false); }} className="bg-white text-slate-700 shadow-lg px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-sm border border-slate-200">
+                  <Plus size={18} className="text-emerald-500" /> Novo Paciente
+                </motion.button>
+                {isAdmin && (
+                  <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => { fileInputRef.current?.click(); setFabOpen(false); }} className="bg-white text-slate-700 shadow-lg px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-sm border border-slate-200">
+                    <Upload size={18} className="text-blue-500" /> Importar Lista
+                  </motion.button>
+                )}
+                {isAdmin && (
+                  <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => { setIsResetModalOpen(true); setFabOpen(false); }} className="bg-white text-rose-600 shadow-lg px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-sm border border-rose-200">
+                    <Trash2 size={18} /> Zerar Sistema
+                  </motion.button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              <button
-                onClick={() => {
-                  setIsModalOpen(true)
-                  setFabOpen(false)
-                }}
-                className="bg-white shadow-xl px-5 py-3 rounded-2xl font-black flex items-center gap-2 text-slate-700 text-sm active:scale-95 transition-all"
-              >
-                <Plus size={18} className="text-orange-500" />
-                Novo Paciente
-              </button>
-
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    fileInputRef.current?.click()
-                    setFabOpen(false)
-                  }}
-                  className="bg-white shadow-xl px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-slate-700 text-sm"
-                >
-                  <Upload size={18} className="text-blue-500" />
-                  Importar Lista
-                </button>
-              )}
-
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    setIsResetModalOpen(true)
-                    setFabOpen(false)
-                  }}
-                  className="bg-white shadow-xl px-5 py-3 rounded-2xl font-bold flex items-center gap-2 text-rose-600 text-sm"
-                >
-                  <Trash2 size={18} />
-                  Zerar Sistema
-                </button>
-              )}
-
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <motion.button
-          onClick={() => {
-            setChatbotOpen(false)
-            setFabOpen(!fabOpen)
-          }}
-          className="w-16 h-16 bg-orange-600 hover:bg-orange-700 text-white rounded-full shadow-2xl shadow-orange-600/30 flex items-center justify-center active:scale-95 transition-all"
-          whileTap={{ scale: 0.9 }}
-        >
-          {fabOpen ? <X size={26} /> : <Plus size={30} />}
-        </motion.button>
-
-      </div>
+          <motion.button
+            onClick={() => { setChatbotOpen(false); setFabOpen(!fabOpen); }}
+            whileTap={{ scale: 0.9 }}
+            transition={fastTransition}
+            animate={{ rotate: fabOpen ? 45 : 0 }}
+            className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center"
+          >
+            <Plus size={24} />
+          </motion.button>
+        </div>
       )}
 
-      {/* MODAIS (mantidos) */}
-      {showQueue && !modoSimples && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h2 className="font-black text-slate-800 flex items-center gap-2">
-                ☁️ Pendências Offline
-                {queueCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{queueCount}</span>
-                )}
-              </h2>
-              <button onClick={() => setShowQueue(false)} className="p-2 hover:bg-slate-100 rounded-full">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5">
-              <div className="max-h-80 overflow-y-auto space-y-2 mb-5">
-                {(getQueue() as OfflineQueueItem[]).length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">
-                    <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-emerald-400" />
-                    <p className="font-medium">Nenhuma pendência</p>
-                    <p className="text-xs">Tudo sincronizado</p>
-                  </div>
-                ) : (
-                  (getQueue() as OfflineQueueItem[]).map((item, i) => (
-                    <div key={i} className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50">
-                      {item.tipo === 'novo' && item.dados && (
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">+</div>
-                          <div>
-                            <p className="font-bold text-slate-700">Novo paciente</p>
-                            <p className="text-xs text-slate-500">{item.dados.nome}</p>
-                          </div>
-                        </div>
-                      )}
-                      {item.tipo === 'checkin' && item.id !== undefined && item.status !== undefined && (
-                        <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${item.status ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                            {item.status ? '✓' : '✗'}
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-700">Check-in</p>
-                            <p className="text-xs text-slate-500">ID: {item.id} → {item.status ? 'Presente' : 'Ausente'}</p>
-                          </div>
-                        </div>
-                      )}
+      {/* MODAL DE PENDÊNCIAS OFFLINE */}
+      <AnimatePresence>
+        {showQueue && !modoSimples && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={springTransition} className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                <h2 className="font-black text-slate-800 flex items-center gap-2">
+                  ☁️ Pendências Offline {queueCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{queueCount}</span>}
+                </h2>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setShowQueue(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={18} /></motion.button>
+              </div>
+              <div className="p-5">
+                <div className="max-h-80 overflow-y-auto space-y-2 mb-5">
+                  {(getQueue() as OfflineQueueItem[]).length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-emerald-400" />
+                      <p className="font-medium">Nenhuma pendência</p>
+                      <p className="text-xs">Tudo sincronizado</p>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    (getQueue() as OfflineQueueItem[]).map((item, i) => (
+                      <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.12, ease: premiumEasing }} className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50">
+                        {item.tipo === 'novo' && item.dados && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">+</div>
+                            <div><p className="font-bold text-slate-700">Novo paciente</p><p className="text-xs text-slate-500">{item.dados.nome}</p></div>
+                          </div>
+                        )}
+                        {item.tipo === 'checkin' && item.id !== undefined && item.status !== undefined && (
+                          <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${item.status ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>{item.status ? '✓' : '✗'}</div>
+                            <div><p className="font-bold text-slate-700">Check-in</p><p className="text-xs text-slate-500">ID: {item.id} → {item.status ? 'Presente' : 'Ausente'}</p></div>
+                          </div>
+                        )}
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={async () => { await syncOfflineData(); setShowQueue(false); }} disabled={queueCount === 0} className={`flex-1 py-3 rounded-xl font-bold transition-all ${queueCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'}`}>☁️ Sincronizar</motion.button>
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { if (confirm('Limpar TODAS as pendências? Essa ação não pode ser desfeita.')) { localStorage.removeItem('offlineQueue'); updateQueueCount(); setShowQueue(false); showToast('warning', 'Fila limpa', 'Pendências removidas localmente'); } }} disabled={queueCount === 0} className={`flex-1 py-3 rounded-xl font-bold transition-all ${queueCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-500 text-white shadow-md hover:bg-red-600'}`}>🗑️ Limpar</motion.button>
+                </div>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      {/* TOAST NOTIFICATION */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: 30, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 30, scale: 0.9 }} transition={{ type: 'spring', damping: 20 }} className="fixed bottom-6 right-6 z-[100]">
+            <div className={`flex items-center gap-4 p-4 rounded-2xl shadow-xl backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'bg-emerald-600 text-white' : toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'}`}>
+              {toast.type === 'success' ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+              <div className="flex-1"><h4 className="font-bold text-sm">{toast.title}</h4><p className="text-xs opacity-90 leading-tight mt-0.5">{toast.message}</p></div>
+              <motion.button whileTap={{ scale: 0.9 }} transition={fastTransition} onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100"><X size={18} /></motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL NOVO PACIENTE */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={springTransition} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
+              <div className="p-5 flex justify-between items-center border-b border-slate-100">
+                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-orange-500"/> Novo Paciente</h2>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
+              </div>
+              <form onSubmit={handleSalvar} className="p-5 space-y-4">
+                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Nome Completo *</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Ex: João Silva" /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Responsável</label><input type="text" value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Opcional" /></div>
+                  <div><label className="text-[10px] font-black text-rose-500 uppercase tracking-wider pl-2 mb-1 block">Alergias</label><input type="text" value={novasAlergias} onChange={e => setNovasAlergias(e.target.value)} className="w-full px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all" placeholder="Se houver" /></div>
+                </div>
+                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-wider pl-2 mb-1 block">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" placeholder="Informações adicionais..." /></div>
+                <div className="flex justify-end gap-3 pt-3">
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 font-bold text-slate-500">Cancelar</motion.button>
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} type="submit" disabled={saving} className="px-6 py-2.5 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl font-bold shadow-md flex items-center gap-2 disabled:opacity-50">
+                    {saving ? <Loader2 className="animate-spin h-4 w-4"/> : <><Save size={16}/> Cadastrar</>}
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL IMPORTAR CSV */}
+      <AnimatePresence>
+        {isImportConfirmOpen && fileToImport && !modoSimples && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={springTransition} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
+              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4"><FileSpreadsheet size={28} /></div>
+              <h2 className="text-xl font-black text-slate-800 mb-2">Importar Lista?</h2>
+              <p className="text-sm font-medium text-slate-500 mb-6 bg-slate-50 py-2 rounded-xl border border-slate-100 truncate px-3">{fileToImport.name}</p>
               <div className="flex gap-3">
-                <button 
-                  onClick={async () => {
-                    await syncOfflineData()
-                    setShowQueue(false)
-                  }} 
-                  disabled={queueCount === 0}
-                  className={`flex-1 py-3 rounded-xl font-bold transition-all ${
-                    queueCount === 0 
-                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                      : 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700'
-                  }`}
-                >
-                  ☁️ Sincronizar
-                </button>
-                <button 
-                  onClick={() => {
-                    if (confirm('Limpar TODAS as pendências? Essa ação não pode ser desfeita.')) {
-                      localStorage.removeItem('offlineQueue')
-                      updateQueueCount()
-                      setShowQueue(false)
-                      showToast('warning', 'Fila limpa', 'Pendências removidas localmente')
-                    }
-                  }} 
-                  disabled={queueCount === 0}
-                  className={`flex-1 py-3 rounded-xl font-bold transition-all ${
-                    queueCount === 0 
-                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                      : 'bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600'
-                  }`}
-                >
-                  🗑️ Limpar
-                </button>
+                <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => setIsImportConfirmOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</motion.button>
+                <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={processFileImport} disabled={importing} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md">{importing ? <Loader2 className="animate-spin h-5 w-5 mx-auto" /> : 'Importar'}</motion.button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-10 fade-in duration-300">
-          <div className={`flex items-center gap-4 p-5 rounded-[2rem] shadow-2xl border backdrop-blur-md min-w-[300px] bg-slate-800 text-white`}>
-            {toast.type === 'success' ? <CheckCircle2 className="text-emerald-400" size={28} /> : <AlertTriangle className="text-amber-400" size={28} />}
-            <div className="flex-1">
-              <h4 className="font-black text-sm">{toast.title}</h4>
-              <p className="text-xs font-medium text-slate-300 leading-tight mt-0.5">{toast.message}</p>
-            </div>
-            <button onClick={() => setToast(null)} className="ml-2 text-slate-400 hover:text-white"><X size={20} /></button>
-          </div>
-        </div>
-      )}
+      {/* MODAL CONFIRMAR CHECK-IN */}
+      <AnimatePresence>
+        {checkInTarget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={springTransition} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4 ${checkInTarget.status ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                {checkInTarget.status ? <UserX size={28} /> : <UserCheck size={28} />}
+              </div>
+              <h2 className="text-xl font-black text-slate-800 mb-2">{checkInTarget.status ? 'Remover Presença?' : 'Confirmar Presença?'}</h2>
+              <p className="text-slate-500 text-base mb-6 font-bold">{checkInTarget.nome}</p>
+              <div className="flex gap-3">
+                <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={cancelCheckIn} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</motion.button>
+                <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={confirmCheckIn} className={`flex-1 py-3 rounded-xl font-bold text-white shadow-md ${checkInTarget.status ? 'bg-rose-500' : 'bg-emerald-600'}`}>Confirmar</motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
-             <div className="p-6 flex justify-between items-center border-b border-slate-100">
-               <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-orange-600"/> Novo Paciente</h2>
-               <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:bg-slate-100"><X size={20}/></button>
-             </div>
-             <form onSubmit={handleSalvar} className="p-6 space-y-5 bg-slate-50/50">
-                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">Nome Completo</label><input type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl font-medium focus:ring-4 focus:ring-orange-500/10" placeholder="Ex: João Silva" /></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">Responsável</label><input type="text" value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl font-medium focus:ring-4 focus:ring-orange-500/10" placeholder="Opcional" /></div>
-                    <div><label className="text-[10px] font-black text-rose-500 uppercase tracking-widest pl-2 mb-1 block">Alergias</label><input type="text" value={novasAlergias} onChange={e => setNovasAlergias(e.target.value)} className="w-full px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl font-medium focus:ring-4 focus:ring-rose-500/10" placeholder="Se houver" /></div>
-                </div>
-                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2 mb-1 block">Observações</label><textarea rows={3} value={novasObservacoes} onChange={e => setNovasObservacoes(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl font-medium focus:ring-4 focus:ring-orange-500/10" placeholder="Informações adicionais..." /></div>
-                <div className="flex justify-end gap-3 pt-4">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 font-bold text-slate-500">Cancelar</button>
-                    <button type="submit" disabled={saving} className="px-8 py-3 bg-orange-600 text-white rounded-2xl font-black shadow-lg shadow-orange-600/30 flex items-center gap-2">
-                        {saving ? <Loader2 className="animate-spin h-5 w-5"/> : <><Save size={20}/> Cadastrar</>}
-                    </button>
-                </div>
-             </form>
-          </div>
-        </div>
-      )}
-
-      {isImportConfirmOpen && fileToImport && !modoSimples && (
-         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm p-8 text-center border border-slate-100">
-                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><FileSpreadsheet size={32} /></div>
-                <h2 className="text-2xl font-black text-slate-800 mb-2">Importar Lista?</h2>
-                <p className="text-sm font-medium text-slate-500 mb-8 bg-slate-50 py-2 rounded-xl border border-slate-100 truncate px-4">{fileToImport.name}</p>
-                <div className="flex gap-3">
-                    <button onClick={() => setIsImportConfirmOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Cancelar</button>
-                    <button onClick={processFileImport} disabled={importing} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/30">
-                        {importing ? <Loader2 className="animate-spin h-5 w-5 mx-auto" /> : 'Importar'}
-                    </button>
-                </div>
-            </div>
-         </div>
-      )}
-
-      {checkInTarget && (
-         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm p-8 text-center border border-slate-100">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 ${checkInTarget.status ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                    {checkInTarget.status ? <UserX size={32} /> : <UserCheck size={32} />}
-                </div>
-                <h2 className="text-2xl font-black text-slate-800 mb-2">{checkInTarget.status ? 'Remover Presença?' : 'Confirmar Presença?'}</h2>
-                <p className="text-slate-500 text-lg mb-8 font-bold">{checkInTarget.nome}</p>
-                <div className="flex gap-3">
-                    <button onClick={cancelCheckIn} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Cancelar</button>
-                    <button onClick={confirmCheckIn} className={`flex-1 py-4 rounded-2xl font-black text-white shadow-lg ${checkInTarget.status ? 'bg-rose-500 shadow-rose-500/30' : 'bg-emerald-600 shadow-emerald-600/30'}`}>Confirmar</button>
-                </div>
-            </div>
-         </div>
-      )}
-
-      {isResetModalOpen && !modoSimples && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-8 text-center border border-rose-100">
-             <div className="w-20 h-20 bg-rose-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6"><AlertTriangle className="text-rose-600 w-10 h-10" /></div>
-             <h2 className="text-rose-600 font-black text-2xl mb-2">Zerar Sistema?</h2>
-             <p className="text-slate-500 font-medium mb-8">Essa ação apagará <strong className="text-rose-600">todos os pacientes e históricos</strong>. É irreversível.</p>
-             <form onSubmit={handleZerarSistema} className="space-y-5">
-                <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full px-4 py-4 bg-rose-50/50 border border-rose-200 rounded-2xl text-center font-black text-rose-700 focus:ring-4 focus:ring-rose-500/20 placeholder:text-rose-300 placeholder:font-medium" placeholder="Digite sua senha de admin" />
-                {resetError && <p className="text-rose-600 font-black text-xs bg-rose-50 py-2 rounded-xl">{resetError}</p>}
+      {/* MODAL ZERAR SISTEMA */}
+      <AnimatePresence>
+        {isResetModalOpen && !modoSimples && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={springTransition} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center border border-rose-100">
+              <div className="w-16 h-16 bg-rose-50 rounded-xl flex items-center justify-center mx-auto mb-4"><AlertTriangle className="text-rose-600 w-8 h-8" /></div>
+              <h2 className="text-rose-600 font-black text-xl mb-2">Zerar Sistema?</h2>
+              <p className="text-slate-500 font-medium mb-6">Essa ação apagará <strong className="text-rose-600">todos os pacientes e históricos</strong>. É irreversível.</p>
+              <form onSubmit={handleZerarSistema} className="space-y-4">
+                <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full px-4 py-3 bg-rose-50/50 border border-rose-200 rounded-xl text-center font-bold text-rose-700 focus:ring-2 focus:ring-rose-500/20 placeholder:text-rose-300" placeholder="Digite sua senha de admin" />
+                {resetError && <p className="text-rose-600 font-bold text-xs bg-rose-50 py-2 rounded-xl">{resetError}</p>}
                 <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black">Cancelar</button>
-                    <button type="submit" disabled={isResetting} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black shadow-lg shadow-rose-600/30">
-                        {isResetting ? <Loader2 className="animate-spin h-6 w-6 mx-auto"/> : 'Apagar Tudo'}
-                    </button>
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancelar</motion.button>
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} type="submit" disabled={isResetting} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold shadow-md">{isResetting ? <Loader2 className="animate-spin h-5 w-5 mx-auto"/> : 'Apagar Tudo'}</motion.button>
                 </div>
-             </form>
-          </div>
-        </div>
-      )}
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <ChatbotWidget
         isOpen={chatbotOpen}
         onOpenChange={(isOpen) => {
-          setChatbotOpen(isOpen)
-          if (isOpen) setFabOpen(false)
+          setChatbotOpen(isOpen);
+          if (isOpen) setFabOpen(false);
         }}
       />
     </div>

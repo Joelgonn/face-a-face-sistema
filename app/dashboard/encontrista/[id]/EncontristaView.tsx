@@ -1,0 +1,811 @@
+'use client'
+
+import { motion, AnimatePresence, Transition } from 'framer-motion'
+import { 
+  ArrowLeft, User, AlertTriangle, Pill, History, UserCheck, 
+  ChevronDown, ChevronUp, Clock, CheckCircle2, Pencil, X, 
+  Trash2, Loader2, CalendarClock, ThumbsUp, Check, Plus
+} from 'lucide-react'
+
+// --- TIPAGEM ---
+type Prescricao = {
+  id: number
+  nome_medicamento: string | null
+  dosagem: string | null
+  posologia: string | null
+  horario_inicial: string | null
+}
+
+type HistoricoItem = {
+  id: number
+  data_hora: string | null
+  administrador: string | null
+  prescricao_id: number
+  prescricao: {
+    nome_medicamento: string | null
+    dosagem: string | null
+  } | null
+}
+
+type PacienteCompleto = {
+  id: number
+  nome: string | null
+  responsavel: string | null
+  alergias: string | null
+  observacoes: string | null
+  check_in: boolean
+}
+
+type MedicamentoBaseRow = {
+  id: number
+  nome: string | null
+}
+
+type StatusMedicacao = {
+  texto: string
+  cor: string
+  bg: string
+}
+
+type AllergyWarning = {
+  show: boolean
+  message: string
+  onConfirm: () => void
+} | null
+
+type Props = {
+  // --- DADOS ---
+  paciente: PacienteCompleto
+  medicacoes: Prescricao[]
+  historico: HistoricoItem[]
+  loading: boolean
+  saving: boolean
+  infoExpanded: boolean
+  setInfoExpanded: (value: boolean) => void
+
+  // --- MODAL DE MEDICAÇÃO ---
+  isModalOpen: boolean
+  setIsModalOpen: (value: boolean) => void
+  medNome: string
+  medDosagem: string
+  setMedDosagem: (value: string) => void
+  medPosologia: string
+  setMedPosologia: (value: string) => void
+  medHorario: string
+  sugestoes: MedicamentoBaseRow[]
+  mostrarSugestoes: boolean
+  setMostrarSugestoes: (value: boolean) => void
+  wrapperRef: React.RefObject<HTMLDivElement>
+
+  // --- MODAL DE ADMINISTRAÇÃO ---
+  isAdministerModalOpen: boolean
+  setIsAdministerModalOpen: (value: boolean) => void
+  selectedPrescricao: Prescricao | null
+  horaAdministracao: string
+  setHoraAdministracao: (value: string) => void
+
+  // --- MODAIS DE CONFIRMAÇÃO ---
+  medicationToDelete: number | null
+  setMedicationToDelete: (value: number | null) => void
+  historyToDelete: number | null
+  setHistoryToDelete: (value: number | null) => void
+  allergyWarning: AllergyWarning
+  setAllergyWarning: (value: AllergyWarning) => void
+
+  // --- MODAL DE EDIÇÃO ---
+  isEditModalOpen: boolean
+  setIsEditModalOpen: (value: boolean) => void
+  editNome: string
+  setEditNome: (value: string) => void
+  editResponsavel: string
+  setEditResponsavel: (value: string) => void
+  editAlergias: string
+  setEditAlergias: (value: string) => void
+  editObservacoes: string
+  setEditObservacoes: (value: string) => void
+
+  // --- HANDLERS ---
+  onAddMedicacao: () => void
+  onAdministrar: (prescricao: Prescricao) => void
+  onDeleteMedicacao: (id: number) => void
+  onDeleteHistory: (id: number) => void
+  onConfirmDeleteMedication: () => void
+  onConfirmDeleteHistory: () => void
+  onConfirmAdministracao: () => void
+  onUpdatePessoa: (e: React.FormEvent) => Promise<void>
+  onOpenEditModal: () => void
+  onGoBack: () => void
+
+  // --- FUNÇÕES AUXILIARES ---
+  getStatus: (med: Prescricao, historico: HistoricoItem[]) => StatusMedicacao
+  onNomeChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onSelectMedicamento: (nome: string) => void
+  onHorarioChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onPosologiaBlur: () => void
+}
+
+// --- FUNÇÕES AUXILIARES (UI) ---
+const formatarHora = (isoString: string | null) => {
+  if (!isoString) return { hora: '--:--', data: '--/--' }
+  const data = new Date(isoString)
+  return {
+    hora: data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
+    data: data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+  }
+}
+
+const formatarNomeEnfermeiro = (email: string | null) => {
+  if (!email) return 'Desconhecido'
+  const parteNome = email.split('@')[0]
+  const nomeLimpo = parteNome.replace(/[0-9]/g, '').replace(/[._]/g, ' ')
+  return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim()
+}
+
+// --- EASING PREMIUM (iOS-LIKE) - COM TIPAGEM CORRETA ---
+const fastTransition: Transition = {
+  duration: 0.18,
+  ease: [0.22, 1, 0.36, 1]
+}
+
+const springTransition: Transition = {
+  type: 'spring',
+  stiffness: 350,
+  damping: 28
+}
+
+export function EncontristaView({
+  paciente,
+  medicacoes,
+  historico,
+  loading,
+  saving,
+  infoExpanded,
+  setInfoExpanded,
+  isModalOpen,
+  setIsModalOpen,
+  medNome,
+  medDosagem,
+  setMedDosagem,
+  medPosologia,
+  setMedPosologia,
+  medHorario,
+  sugestoes,
+  mostrarSugestoes,
+  setMostrarSugestoes,
+  wrapperRef,
+  isAdministerModalOpen,
+  setIsAdministerModalOpen,
+  selectedPrescricao,
+  horaAdministracao,
+  setHoraAdministracao,
+  medicationToDelete,
+  setMedicationToDelete,
+  historyToDelete,
+  setHistoryToDelete,
+  allergyWarning,
+  setAllergyWarning,
+  isEditModalOpen,
+  setIsEditModalOpen,
+  editNome,
+  setEditNome,
+  editResponsavel,
+  setEditResponsavel,
+  editAlergias,
+  setEditAlergias,
+  editObservacoes,
+  setEditObservacoes,
+  onAddMedicacao,
+  onAdministrar,
+  onDeleteMedicacao,
+  onDeleteHistory,
+  onConfirmDeleteMedication,
+  onConfirmDeleteHistory,
+  onConfirmAdministracao,
+  onUpdatePessoa,
+  onOpenEditModal,
+  onGoBack,
+  getStatus,
+  onNomeChange,
+  onSelectMedicamento,
+  onHorarioChange,
+  onPosologiaBlur
+}: Props) {
+
+  // --- OVERLAY DE LOADING GLOBAL ---
+  const showOverlay = loading || saving
+
+  return (
+    <>
+      {showOverlay && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl px-6 py-4 shadow-xl flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+            <span className="text-sm font-medium text-slate-700">Processando...</span>
+          </div>
+        </div>
+      )}
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={fastTransition}
+        className="min-h-screen bg-gradient-to-b from-slate-50 to-white"
+      >
+        {/* HEADER COM CONTINUIDADE DO CARD */}
+        <motion.div
+          layoutId={`card-${paciente.id}`}
+          className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100"
+        >
+          <div className="max-w-3xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-4">
+              {/* BOTÃO VOLTAR COM ONGOBACK */}
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
+                onClick={onGoBack}
+                className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <ArrowLeft size={20} />
+              </motion.button>
+
+              <div className="flex-1">
+                <motion.h1
+                  layoutId={`card-title-${paciente.id}`}
+                  className="text-lg md:text-xl font-bold text-slate-800"
+                >
+                  {paciente.nome}
+                </motion.h1>
+                <p className="text-xs text-slate-500">
+                  ID: {paciente.id} • {paciente.check_in ? 'Presente' : 'Ausente'}
+                </p>
+              </div>
+
+              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${paciente.check_in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                {paciente.check_in ? <UserCheck size={14} className="inline mr-1" /> : null}
+                {paciente.check_in ? 'Presente' : 'Ausente'}
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                transition={fastTransition}
+                onClick={onOpenEditModal}
+                className="p-2 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"
+                title="Editar paciente"
+              >
+                <Pencil size={18} />
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* CONTEÚDO */}
+        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+          
+          {/* INFORMAÇÕES DO PACIENTE */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05, ...fastTransition }}
+            className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+          >
+            <button
+              onClick={() => setInfoExpanded(!infoExpanded)}
+              className="w-full p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center text-white">
+                  <User size={24} />
+                </div>
+                <div className="text-left">
+                  <h2 className="font-bold text-slate-800">{paciente.nome}</h2>
+                  <p className="text-sm text-slate-500">Responsável: {paciente.responsavel || 'Não informado'}</p>
+                </div>
+              </div>
+              {infoExpanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+            </button>
+
+            <AnimatePresence>
+              {infoExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={fastTransition}
+                  className="border-t border-slate-100"
+                >
+                  <div className="p-5 space-y-4">
+                    {paciente.alergias && (
+                      <div className="flex items-start gap-3 p-3 bg-rose-50 rounded-xl border border-rose-100">
+                        <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Alergias / Atenção</p>
+                          <p className="text-sm font-semibold text-rose-700">{paciente.alergias}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {paciente.observacoes && (
+                      <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                        <Clock size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Observações</p>
+                          <p className="text-sm font-medium text-amber-700">{paciente.observacoes}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {!paciente.alergias && !paciente.observacoes && (
+                      <p className="text-slate-400 text-sm italic text-center py-4">Nenhuma informação adicional cadastrada.</p>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* MEDICAÇÕES */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, ...fastTransition }}
+            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                <Pill className="text-orange-500" size={20} />
+                Medicações
+                <span className="text-xs text-slate-400 font-normal ml-2">({medicacoes.length})</span>
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                disabled={saving}
+                className="bg-orange-50 text-orange-700 hover:bg-orange-100 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
+              >
+                <Plus size={14} /> Adicionar
+              </button>
+            </div>
+
+            {medicacoes.length === 0 ? (
+              <p className="text-slate-400 text-sm italic text-center py-8">Nenhuma medicação cadastrada.</p>
+            ) : (
+              <div className="space-y-3">
+                {medicacoes.map((med, index) => {
+                  const status = getStatus(med, historico)
+                  const isCritical = status.bg.includes('red') || status.bg.includes('amber')
+                  
+                  return (
+                    <motion.div
+                      key={med.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.05 * index, ...fastTransition }}
+                      className={`p-4 rounded-xl border transition-all ${status.bg} ${isCritical ? 'ring-1 ring-red-200' : ''}`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-slate-800">{med.nome_medicamento}</h3>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded-full">{med.dosagem}</span>
+                            <span className="text-xs text-slate-500">{med.posologia}</span>
+                            <span className="text-xs text-slate-400">Início: {med.horario_inicial}</span>
+                          </div>
+                          <div className="mt-2">
+                            <span className={`text-xs font-bold ${status.cor}`}>{status.texto}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onAdministrar(med)}
+                            disabled={saving}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 ${isCritical ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+                          >
+                            {isCritical ? <AlertTriangle size={12} className="inline mr-1" /> : <CheckCircle2 size={12} className="inline mr-1" />}
+                            Administrar
+                          </button>
+                          <button
+                            onClick={() => onDeleteMedicacao(med.id)}
+                            disabled={saving}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Excluir medicação"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
+          </motion.div>
+
+          {/* HISTÓRICO */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, ...fastTransition }}
+            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5"
+          >
+            <h2 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+              <History className="text-blue-500" size={20} />
+              Histórico de Administração
+              <span className="text-xs text-slate-400 font-normal ml-2">({historico.length})</span>
+            </h2>
+
+            {historico.length === 0 ? (
+              <p className="text-slate-400 text-sm italic text-center py-8">Nenhum registro de administração ainda.</p>
+            ) : (
+              <div className="relative space-y-4">
+                <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>
+                {historico.map((item, index) => {
+                  const { hora, data } = formatarHora(item.data_hora)
+                  return (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.02 * index, ...fastTransition }}
+                      className="relative pl-8 group"
+                    >
+                      <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
+                        <Check size={10} className="text-emerald-700" />
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800 text-sm">
+                              {item.prescricao?.nome_medicamento || 'Medicação excluída'}
+                            </p>
+                            <p className="text-xs text-slate-500">{item.prescricao?.dosagem}</p>
+                            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                              <User size={10} />
+                              {formatarNomeEnfermeiro(item.administrador)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-slate-700">{hora}</p>
+                              <p className="text-[10px] text-slate-400">{data}</p>
+                            </div>
+                            <button
+                              onClick={() => onDeleteHistory(item.id)}
+                              disabled={saving}
+                              className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                              title="Excluir registro"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* --- MODAL NOVA MEDICAÇÃO --- */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+            >
+              <div className="p-5 flex justify-between items-center border-b border-slate-100">
+                <h2 className="text-xl font-black text-orange-600">Nova Medicação</h2>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="relative" ref={wrapperRef}>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome do Medicamento *</label>
+                  <input
+                    type="text"
+                    required
+                    value={medNome}
+                    onChange={onNomeChange}
+                    onFocus={() => { if(medNome) setMostrarSugestoes(true); }}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800 font-medium"
+                    placeholder="Digite para buscar..."
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  {mostrarSugestoes && sugestoes.length > 0 && (
+                    <ul className="absolute z-50 w-full bg-white border border-slate-100 rounded-xl mt-1 max-h-48 overflow-y-auto shadow-lg py-1">
+                      {sugestoes.map(sugestao => (
+                        <li
+                          key={sugestao.id}
+                          onClick={() => onSelectMedicamento(sugestao.nome || '')}
+                          className="px-4 py-2 hover:bg-orange-50 cursor-pointer text-slate-700 text-sm border-b border-slate-50 last:border-none transition-colors"
+                        >
+                          {sugestao.nome}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dosagem *</label>
+                    <input
+                      type="text"
+                      required
+                      value={medDosagem}
+                      onChange={e => setMedDosagem(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800"
+                      placeholder="Ex: 500mg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Horário *</label>
+                    <input
+                      type="text"
+                      required
+                      value={medHorario}
+                      onChange={onHorarioChange}
+                      placeholder="HH:MM"
+                      maxLength={5}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800 text-center font-medium"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Posologia *</label>
+                  <input
+                    type="text"
+                    required
+                    value={medPosologia}
+                    onChange={e => setMedPosologia(e.target.value)}
+                    onBlur={onPosologiaBlur}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800"
+                    placeholder="Ex: 8/8h"
+                  />
+                </div>
+                <button
+                  onClick={onAddMedicacao}
+                  disabled={saving}
+                  className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-md disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="animate-spin h-4 w-4" /> : <CheckCircle2 size={16} />}
+                  Salvar Medicação
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL CONFIRMAR ADMINISTRAÇÃO --- */}
+      <AnimatePresence>
+        {isAdministerModalOpen && selectedPrescricao && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100"
+            >
+              <div className="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={28} className="text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Confirmar Dose</h2>
+              <p className="text-slate-500 text-sm mb-6">
+                Administrar <strong className="text-emerald-600">{selectedPrescricao.nome_medicamento}</strong> agora?
+              </p>
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Horário Realizado</label>
+                <div className="relative">
+                  <input
+                    type="time"
+                    required
+                    value={horaAdministracao}
+                    onChange={e => setHoraAdministracao(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xl font-bold text-slate-800 tracking-wider"
+                  />
+                  <div className="absolute left-3.5 top-3.5 text-slate-400 pointer-events-none">
+                    <CalendarClock size={20} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsAdministerModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={onConfirmAdministracao}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-md hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="animate-spin h-4 w-4" /> : <CheckCircle2 size={16} />}
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL EXCLUIR MEDICAÇÃO --- */}
+      <AnimatePresence>
+        {medicationToDelete !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-rose-100"
+            >
+              <div className="w-16 h-16 bg-rose-50 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="text-rose-500 w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-rose-700 mb-2">Excluir Medicação?</h2>
+              <p className="text-slate-500 text-sm mb-6">Isso removerá a prescrição e todo o histórico de administração.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setMedicationToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button onClick={onConfirmDeleteMedication} disabled={saving} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold shadow-md hover:bg-rose-700 transition-all disabled:opacity-50">Excluir</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL EXCLUIR HISTÓRICO --- */}
+      <AnimatePresence>
+        {historyToDelete !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-amber-100"
+            >
+              <div className="w-16 h-16 bg-amber-50 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <History className="text-amber-500 w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-amber-700 mb-2">Desfazer Registro?</h2>
+              <p className="text-slate-500 text-sm mb-6">
+                Você está prestes a apagar <strong>apenas este registro</strong> de administração. O medicamento continuará na lista.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setHistoryToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button onClick={onConfirmDeleteHistory} disabled={saving} className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-bold shadow-md hover:bg-amber-700 transition-all disabled:opacity-50">Apagar Registro</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL ALERTA DE ALERGIA --- */}
+      <AnimatePresence>
+        {allergyWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border-4 border-red-100"
+            >
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                <AlertTriangle className="text-red-600 w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-black text-red-600 mb-2">ATENÇÃO!</h2>
+              <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6">
+                <p className="text-slate-600 font-medium mb-1 text-sm">O sistema detectou um conflito</p>
+                <p className="text-lg font-bold text-red-800 uppercase break-words">{allergyWarning.message}</p>
+              </div>
+              <p className="text-xs text-slate-400 mb-6 px-2 leading-relaxed">
+                * Este alerta é automático e baseado em texto. <strong>Sempre verifique a ficha clínica e consulte o responsável de saúde.</strong>
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={allergyWarning.onConfirm}
+                  disabled={saving}
+                  className="w-full py-3 bg-red-600 text-white rounded-xl font-bold shadow-md hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <ThumbsUp size={18} /> Sim, estou ciente
+                </button>
+                <button onClick={() => setAllergyWarning(null)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL EDITAR PACIENTE --- */}
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={fastTransition}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={springTransition}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
+            >
+              <div className="p-5 flex justify-between items-center border-b border-slate-100">
+                <h2 className="text-xl font-black text-orange-600">Editar Dados</h2>
+                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
+              </div>
+              <form onSubmit={onUpdatePessoa} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
+                  <input type="text" required value={editNome} onChange={e => setEditNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Responsável</label>
+                    <input type="text" value={editResponsavel} onChange={e => setEditResponsavel(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-red-500 uppercase mb-1">Alergias</label>
+                    <input type="text" value={editAlergias} onChange={e => setEditAlergias(e.target.value)} className="w-full px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 text-rose-800" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações</label>
+                  <textarea rows={3} value={editObservacoes} onChange={e => setEditObservacoes(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-slate-800" />
+                </div>
+                <button type="submit" disabled={saving} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                  {saving ? <Loader2 className="animate-spin h-4 w-4" /> : <CheckCircle2 size={16} />}
+                  Salvar Alterações
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
