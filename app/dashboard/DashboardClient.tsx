@@ -168,7 +168,13 @@ export default function DashboardClient({
   const [isOnline, setIsOnline] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
-  const [modoSimples, setModoSimples] = useState(false);
+  
+  // 🔥 CORREÇÃO: Modo simples no mobile, completo no desktop
+  const [modoSimples, setModoSimples] = useState(() => {
+    if (typeof window === 'undefined') return false; // Server-side fallback
+    return window.innerWidth < 768; // Mobile = true, Desktop = false
+  });
+  
   const [openMenu, setOpenMenu] = useState(false);
   const [flashId, setFlashId] = useState<number | null>(null);
   const [fabOpen, setFabOpen] = useState(false);
@@ -187,6 +193,19 @@ export default function DashboardClient({
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // ============================================================
+  // 🔥 LISTENER PARA REDIMENSIONAMENTO (opcional)
+  // ============================================================
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth < 768;
+      setModoSimples(isMobile);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // ============================================================
   // 🔥 DEBOUNCE PARA BUSCA (300ms padrão UX)
@@ -924,49 +943,98 @@ export default function DashboardClient({
 
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
         
-        {/* STATS EXPANDIBLE (VISÃO GERAL - Desktop) */}
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
-            <div className="flex items-center gap-3">
-              <Activity className="text-orange-500 w-5 h-5" />
-              <span className="font-bold text-slate-700">Visão Geral</span>
-            </div>
-            <div className="flex items-center gap-4">
-              {!showStats && (
-                <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
-                  <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
-                  <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
-                  <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
-                </div>
-              )}
-              <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
-            </div>
-          </button>
+        {/* STATS EXPANDIBLE (VISÃO GERAL - Apenas no modo completo) */}
+        {!modoSimples && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Activity className="text-orange-500 w-5 h-5" />
+                <span className="font-bold text-slate-700">Visão Geral</span>
+              </div>
+              <div className="flex items-center gap-4">
+                {!showStats && (
+                  <div className="hidden sm:flex items-center gap-6 text-[10px] font-black uppercase tracking-widest">
+                    <span className="text-slate-400">Inscritos: <span className="text-slate-700 text-xs ml-1">{totalEncontristas}</span></span>
+                    <span className="text-emerald-500">Presentes: <span className="text-emerald-600 text-xs ml-1">{totalPresentes}</span></span>
+                    <span className="text-rose-500">Ausentes: <span className="text-rose-600 text-xs ml-1">{totalAusentes}</span></span>
+                  </div>
+                )}
+                <ChevronDown className={`text-slate-400 transition-transform duration-300 ${showStats ? 'rotate-180' : ''}`} size={20} />
+              </div>
+            </button>
 
-          <AnimatePresence>
-            {showStats && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={fastTransition} className="border-t border-slate-100">
-                <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
-                  <div className="p-4 flex flex-col items-center justify-center text-center">
-                    <Users size={20} className="text-blue-500 mb-1" />
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
-                    <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
+            <AnimatePresence>
+              {showStats && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={fastTransition} className="border-t border-slate-100">
+                  <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/50">
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <Users size={20} className="text-blue-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inscritos</p>
+                      <p className="text-2xl font-black text-slate-800">{totalEncontristas}</p>
+                    </div>
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <UserCheck size={20} className="text-emerald-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
+                      <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
+                    </div>
+                    <div className="p-4 flex flex-col items-center justify-center text-center">
+                      <UserX size={20} className="text-rose-500 mb-1" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
+                      <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
+                    </div>
                   </div>
-                  <div className="p-4 flex flex-col items-center justify-center text-center">
-                    <UserCheck size={20} className="text-emerald-500 mb-1" />
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Presentes</p>
-                    <p className="text-2xl font-black text-emerald-600">{totalPresentes}</p>
-                  </div>
-                  <div className="p-4 flex flex-col items-center justify-center text-center">
-                    <UserX size={20} className="text-rose-500 mb-1" />
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ausentes</p>
-                    <p className="text-2xl font-black text-rose-600">{totalAusentes}</p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* MINI STATS BAR PARA MOBILE (apenas em modo simples) */}
+        {modoSimples && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={fastTransition}
+            className="px-0 mt-0"
+          >
+            <div className="flex items-center justify-between bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-4 text-[11px] font-black tracking-wide">
+                <motion.span
+                  key={totalEncontristas}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-slate-600"
+                >
+                  👥 {totalEncontristas}
+                </motion.span>
+                <motion.span
+                  key={totalPresentes}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-emerald-600"
+                >
+                  ✅ {totalPresentes}
+                </motion.span>
+                <motion.span
+                  key={totalAusentes}
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="text-rose-600"
+                >
+                  ❌ {totalAusentes}
+                </motion.span>
+              </div>
+
+              <div className={`text-[10px] px-2 py-1 rounded-full font-bold ${connectionStatus.bg}`}>
+                {connectionStatus.icon} {connectionStatus.text}
+                {queueCount > 0 && <span className="ml-1 bg-white/50 px-1 rounded-full">{queueCount}</span>}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* SEARCH BAR COM INDICADOR DE DIGITAÇÃO */}
         <div className="flex flex-col gap-3">
@@ -975,7 +1043,7 @@ export default function DashboardClient({
             <input 
               ref={inputRef}
               type="text" 
-              placeholder="Buscar por nome, responsável ou ID..."
+              placeholder={modoSimples ? "Buscar por nome ou ID..." : "Buscar por nome, responsável ou ID..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-orange-500/10 font-medium text-slate-700 shadow-sm transition-all text-base"
@@ -998,8 +1066,8 @@ export default function DashboardClient({
             )}
           </div>
           
-          {/* Botões de ação para admin */}
-          {isAdmin && (
+          {/* Botões de ação para admin (apenas no modo completo) */}
+          {!modoSimples && isAdmin && (
             <div className="flex gap-2">
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
               <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
@@ -1030,7 +1098,7 @@ export default function DashboardClient({
 
         {/* LISTA MOBILE (apenas em modo simples) */}
         {modoSimples && (
-          <div className="space-y-3 md:hidden">
+          <div className="space-y-3">
             <AnimatePresence mode="wait">
               {!selectedPatient && (
                 <motion.div
@@ -1111,7 +1179,7 @@ export default function DashboardClient({
           </div>
         )}
 
-        {/* LISTA DESKTOP (sempre visível em modo completo) */}
+        {/* LISTA DESKTOP (apenas em modo completo) */}
         {!modoSimples && (
           <motion.div
             animate={{ 
@@ -1289,7 +1357,7 @@ export default function DashboardClient({
         }}
       />
 
-      {/* MODAIS */}
+      {/* MODAIS (mantidos iguais) */}
       
       {/* MODAL DE PENDÊNCIAS OFFLINE */}
       <AnimatePresence>
