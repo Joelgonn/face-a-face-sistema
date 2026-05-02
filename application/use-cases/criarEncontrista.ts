@@ -1,5 +1,12 @@
 // /application/use-cases/criarEncontrista.ts
 
+import {
+  createOfflineId,
+  createQueueItem,
+  createTempId,
+  type QueueItem,
+} from '@/domain/offline/queue.types'
+
 type CriarEncontristaParams = {
   nome: string
   responsavel: string
@@ -14,11 +21,6 @@ type NovoEncontrista = {
   alergias: string
   observacoes: string
   check_in: boolean
-}
-
-type QueueItem = {
-  tipo: 'novo'
-  dados: NovoEncontrista
 }
 
 type CriarEncontristaDeps = {
@@ -57,10 +59,13 @@ export async function criarEncontrista(
 
   // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'novo',
-      dados: payload
-    })
+    deps.addToQueue(
+      createQueueItem('criar_paciente', {
+        tempId: createTempId('paciente'),
+        offline_id: createOfflineId(),
+        ...payload
+      })
+    )
 
     return {
       success: true,

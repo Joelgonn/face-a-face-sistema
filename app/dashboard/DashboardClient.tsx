@@ -7,8 +7,8 @@ import { zerarSistemaCompleto } from '@/app/actions/system';
 import { Database } from '@/types/supabase'; 
 import { 
   LogOut, Plus, Search, AlertCircle, Save, Loader2, Upload, Clock, X, 
-  UserCheck, UserX, Users, Pill, Trash2, AlertTriangle, Shield,
-  FileText, CheckCircle2, FileSpreadsheet, Activity, ChevronDown,
+  UserCheck, UserX, Users, Trash2, AlertTriangle, Shield,
+  CheckCircle2, FileSpreadsheet, Activity, ChevronDown,
   RefreshCw, RotateCcw, Cloud, Monitor, Smartphone, MessageCircle,
   Wifi, WifiOff
 } from 'lucide-react';
@@ -22,7 +22,13 @@ import { createEncontristaRepository } from '@/infra/repositories/encontrista.re
 import { calcularStatusPessoa } from '@/domain/medicacao/medicacao.rules';
 import { toggleCheckin } from '@/application/use-cases/toggleCheckin';
 import { criarEncontrista } from '@/application/use-cases/criarEncontrista';
-import { syncOffline, QueueItem } from '@/application/use-cases/syncOffline';
+import { queueService } from '@/infra/offline/queue.service';
+import { syncEngine } from '@/infra/offline/sync.engine';
+import { QueueItem } from '@/domain/offline/queue.types';
+import { useOfflineNavigation } from '@/app/hooks/useOfflineNavigation';
+import { getAllPacientes, preloadPacienteById } from '@/app/lib/offlineRepository';
+import { useDashboardActions } from './layout';
+import { useCacheGate } from '@/app/hooks/useCacheGate';
 
 // --- EASING PREMIUM (iOS-LIKE) ---
 const premiumEasing: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -41,32 +47,11 @@ async function safeQuery<T>(fn: () => Promise<T>): Promise<T | null> {
     }
     return result;
   } catch (err) {
-    console.error('🔥 Erro crítico:', err);
+    console.error('Erro crítico:', err);
     alert('Erro de conexão. Clique em "Recarregar Sistema".');
     return null;
   }
 }
-
-// --- OFFLINE QUEUE (localStorage) ---
-const getQueue = () => {
-  if (typeof window === 'undefined') return [];
-  return JSON.parse(localStorage.getItem('offlineQueue') || '[]');
-};
-
-const saveQueue = (queue: unknown[]) => {
-  localStorage.setItem('offlineQueue', JSON.stringify(queue));
-};
-
-const addToQueue = (item: unknown) => {
-  const queue = getQueue();
-  const itemObj = typeof item === 'object' && item !== null ? item as Record<string, unknown> : {};
-  queue.push({
-    ...itemObj,
-    _id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-    createdAt: Date.now()
-  });
-  saveQueue(queue);
-};
 
 // --- TIPAGEM AVANÇADA ---
 type EncontristaRow = Database['public']['Tables']['encontristas']['Row'];
@@ -88,21 +73,6 @@ interface ToastNotification {
 interface DashboardClientProps {
   initialEncontristas: EncontristaDashboard[];
   isAdminInitial: boolean;
-}
-
-interface OfflineQueueItem {
-  _id?: string;
-  createdAt?: number;
-  tipo: 'novo' | 'checkin';
-  dados?: {
-    nome: string;
-    responsavel: string;
-    alergias: string;
-    observacoes: string;
-    check_in: boolean;
-  };
-  id?: number;
-  status?: boolean;
 }
 
 interface BeforeInstallPromptEvent extends Event {
@@ -128,6 +98,27 @@ function toEncontristaDashboard(row: unknown): EncontristaDashboard | null {
     created_at: typedRow.created_at as string || new Date().toISOString(),
     prescricoes
   };
+}
+
+function getQueueItemSummary(item: QueueItem) {
+  switch (item.tipo) {
+    case 'criar_paciente':
+      return { title: 'Novo paciente', detail: item.payload.nome, accent: 'bg-blue-100 text-blue-600', icon: '+' };
+    case 'atualizar_paciente':
+      return { title: 'Atualizar paciente', detail: item.payload.nome, accent: 'bg-amber-100 text-amber-600', icon: '↻' };
+    case 'deletar_paciente':
+      return { title: 'Excluir paciente', detail: item.payload.pacienteRef.id ? `ID ${item.payload.pacienteRef.id}` : item.payload.pacienteRef.tempId || 'temp', accent: 'bg-rose-100 text-rose-600', icon: '×' };
+    case 'criar_medicacao':
+      return { title: 'Nova medicação', detail: item.payload.nome_medicamento, accent: 'bg-violet-100 text-violet-600', icon: '+' };
+    case 'administrar_medicacao':
+      return { title: 'Administrar medicação', detail: item.payload.data_hora, accent: 'bg-emerald-100 text-emerald-600', icon: '✓' };
+    case 'deletar_medicacao':
+      return { title: 'Excluir medicação', detail: item.payload.medicacaoRef.id ? `ID ${item.payload.medicacaoRef.id}` : item.payload.medicacaoRef.tempId || 'temp', accent: 'bg-rose-100 text-rose-600', icon: '×' };
+    case 'deletar_historico':
+      return { title: 'Excluir histórico', detail: item.payload.historicoRef.id ? `ID ${item.payload.historicoRef.id}` : item.payload.historicoRef.tempId || 'temp', accent: 'bg-rose-100 text-rose-600', icon: '×' };
+    case 'checkin':
+      return { title: 'Check-in', detail: `${item.payload.pacienteRef.id ? `ID ${item.payload.pacienteRef.id}` : item.payload.pacienteRef.tempId || 'temp'} → ${item.payload.check_in ? 'Presente' : 'Ausente'}`, accent: item.payload.check_in ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-600', icon: item.payload.check_in ? '✓' : '•' };
+  }
 }
 
 export default function DashboardClient({ 
@@ -169,10 +160,10 @@ export default function DashboardClient({
   const [queueCount, setQueueCount] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
   
-  // 🔥 CORREÇÃO: Modo simples no mobile, completo no desktop
+  // Modo simples no mobile, completo no desktop
   const [modoSimples, setModoSimples] = useState(() => {
-    if (typeof window === 'undefined') return false; // Server-side fallback
-    return window.innerWidth < 768; // Mobile = true, Desktop = false
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768;
   });
   
   const [openMenu, setOpenMenu] = useState(false);
@@ -184,7 +175,7 @@ export default function DashboardClient({
   const [showInstallButton, setShowInstallButton] = useState(false);
   const [isPending, startTransition] = useTransition();
   
-  // 🔥 BLOQUEIA UPDATES DURANTE NAVEGAÇÃO
+  // Bloqueia updates durante navegação
   const [isNavigating, setIsNavigating] = useState(false);
 
   const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -193,9 +184,146 @@ export default function DashboardClient({
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const supabase = createClient();
+  
+  // 🔥 HOOK DE NAVEGAÇÃO OFFLINE
+  const { navigateTo } = useOfflineNavigation();
+  
+  // 🔥 CONTEXTO DO LAYOUT PARA AÇÕES
+  const { setOnImport, setOnReset } = useDashboardActions();
+
+  // 🔥 HOOK DE CACHE GATE (BLINDADO)
+  const {
+    startPreload,
+    markCacheReady,
+    waitForCache,
+    cleanup
+  } = useCacheGate();
 
   // ============================================================
-  // 🔥 LISTENER PARA REDIMENSIONAMENTO (opcional)
+  // 🔥 REGISTRA AS FUNÇÕES DE AÇÃO NO CONTEXTO DO LAYOUT
+  // ============================================================
+  useEffect(() => {
+    const importHandler = () => {
+      fileInputRef.current?.click();
+    };
+    const resetHandler = () => {
+      setIsResetModalOpen(true);
+      setResetError(null);
+    };
+
+    setOnImport(() => importHandler);
+    setOnReset(() => resetHandler);
+
+    return () => {
+      setOnImport(() => null);
+      setOnReset(() => null);
+    };
+  }, [setOnImport, setOnReset]);
+
+  // ============================================================
+  // 🔥 CLEANUP DO CACHE GATE
+  // ============================================================
+  useEffect(() => {
+    return () => cleanup();
+  }, [cleanup]);
+
+  // ============================================================
+  // 🔥 PRECACHE DAS ROTAS
+  // ============================================================
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CACHE_DASHBOARD',
+        url: '/dashboard'
+      });
+    }
+  }, []);
+
+  // ============================================================
+  // 🔥 PRELOAD EM LOTE (CONCORRÊNCIA CONTROLADA)
+  // ============================================================
+  const CONCURRENCY = 5;
+
+  async function preloadInBatches(ids: number[]) {
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      const batch = ids.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        batch.map(async (id) => {
+          try {
+            await preloadPacienteById(id);
+            console.log(`[CACHE] Paciente ${id} OK`);
+          } catch (e) {
+            console.warn(`[CACHE] erro ${id}`, e);
+          }
+        })
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (encontristas.length === 0) return;
+
+    const run = async () => {
+      const runId = startPreload();
+
+      try {
+        const ids = encontristas.map(e => e.id);
+        await preloadInBatches(ids);
+        markCacheReady(runId);
+        console.log('[CACHE] preload finalizado com sucesso');
+      } catch (err) {
+        console.error('[CACHE] erro no preload', err);
+        markCacheReady(runId);
+      }
+    };
+
+    run();
+  }, [encontristas, startPreload, markCacheReady]);
+
+  // ============================================================
+  // 🔥 CARREGAR DO INDEXEDDB QUANDO INITIAL_ENCONTRISTAS ESTIVER VAZIO
+  // 🔥 CORREÇÃO: retry automático se vazio e log para debug
+  // ============================================================
+  useEffect(() => {
+    const loadOfflineDashboard = async () => {
+      try {
+        const pacientes = await getAllPacientes();
+
+        console.log('[IDB LOAD]', pacientes.length, 'pacientes encontrados');
+
+        if (pacientes.length > 0) {
+          const mapped = pacientes.map(p => ({
+            id: p.id,
+            nome: p.paciente.nome,
+            responsavel: p.paciente.responsavel,
+            alergias: p.paciente.alergias,
+            observacoes: p.paciente.observacoes,
+            check_in: p.paciente.check_in,
+            created_at: p.paciente.created_at,
+            prescricoes: []
+          }));
+
+          setEncontristas(mapped as EncontristaDashboard[]);
+        } else {
+          console.log('[IDB] vazio, tentando novamente em 1 segundo...');
+          setTimeout(loadOfflineDashboard, 1000);
+        }
+      } catch (err) {
+        console.warn('[IDB] erro ao carregar dashboard', err);
+        setTimeout(loadOfflineDashboard, 2000);
+      }
+    };
+
+    // Só tenta carregar do IDB se não houver dados iniciais (offline)
+    if (initialEncontristas.length === 0) {
+      loadOfflineDashboard();
+    }
+  }, [initialEncontristas]);
+
+  // ============================================================
+  // LISTENER PARA REDIMENSIONAMENTO
   // ============================================================
   useEffect(() => {
     const handleResize = () => {
@@ -208,7 +336,7 @@ export default function DashboardClient({
   }, []);
 
   // ============================================================
-  // 🔥 DEBOUNCE PARA BUSCA (300ms padrão UX)
+  // DEBOUNCE PARA BUSCA
   // ============================================================
   useEffect(() => {
     setIsTyping(true);
@@ -221,7 +349,7 @@ export default function DashboardClient({
   }, [searchTerm]);
 
   // ============================================================
-  // 🔥 PRÉ-NORMALIZAÇÃO DOS DADOS (otimização de performance)
+  // PRÉ-NORMALIZAÇÃO DOS DADOS
   // ============================================================
   const normalizedEncontristas = useMemo(() => {
     return encontristas.map(p => ({
@@ -232,22 +360,18 @@ export default function DashboardClient({
     }));
   }, [encontristas]);
 
-  // ============================================================
-  // 🔥 FUNÇÃO PARA REMOVER CAMPOS TEMPORÁRIOS
-  // ============================================================
-  const toOriginalEncontrista = (p: typeof normalizedEncontristas[0]): EncontristaDashboard => {
+  const toOriginalEncontrista = useCallback((p: typeof normalizedEncontristas[number]): EncontristaDashboard => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { nome_lower, responsavel_lower, id_str, ...original } = p;
     return original as EncontristaDashboard;
-  };
+  }, []);
 
   // ============================================================
-  // 🔥 FILTRO CORRIGIDO - Busca exata por número
+  // FILTRO CORRIGIDO - Busca exata por número
   // ============================================================
   const filtered = useMemo(() => {
     const term = debouncedSearch.toLowerCase().trim();
     
-    // Sem termo de busca
     if (!term) {
       return normalizedEncontristas.map(toOriginalEncontrista);
     }
@@ -255,12 +379,10 @@ export default function DashboardClient({
     const isNumeric = /^\d+$/.test(term);
 
     if (isNumeric) {
-      // 🔥 BUSCA EXATA: só retorna o ID exato
       const exact = normalizedEncontristas.filter(p => p.id_str === term);
       return exact.map(toOriginalEncontrista);
     }
 
-    // Busca textual
     const resultados = normalizedEncontristas.filter(p => {
       return (
         p.nome_lower.includes(term) ||
@@ -269,11 +391,10 @@ export default function DashboardClient({
     });
 
     return resultados.map(toOriginalEncontrista);
-  }, [normalizedEncontristas, debouncedSearch]);
+  }, [normalizedEncontristas, debouncedSearch, toOriginalEncontrista]);
 
   const updateQueueCount = useCallback(() => {
-    const q = getQueue();
-    setQueueCount(q.length);
+    setQueueCount(queueService.getQueueCount());
   }, []);
 
   const showToast = useCallback((type: 'success' | 'error' | 'warning', title: string, message: string) => {
@@ -286,7 +407,7 @@ export default function DashboardClient({
   const totalAusentes = totalEncontristas - totalPresentes;
 
   // ============================================================
-  // 🔥 BUSCAR ENCONTRISTAS (com bloqueio de navegação)
+  // BUSCAR ENCONTRISTAS (ONLINE)
   // ============================================================
   const buscarEncontristas = useCallback(async () => {
     if (isNavigating) return;
@@ -311,31 +432,21 @@ export default function DashboardClient({
     }
 
     if (data) {
-      setEncontristas(data);
+      setEncontristas(data);      
     }
 
     setLoading(false);
   }, [showToast, isNavigating]);
 
   // ============================================================
-  // 🔥 SINCRONIZAÇÃO OFFLINE
+  // SINCRONIZAÇÃO OFFLINE
   // ============================================================
   const syncOfflineData = useCallback(async () => {
     if (isNavigating) return;
     
     const supabaseClient = createClient();
-    const result = await syncOffline({
-      getQueue: () => getQueue() as QueueItem[],
-      saveQueue: (queue) => saveQueue(queue),
-      insertNovoPacienteRemote: async (data) => {
-        return await supabaseClient.from('encontristas').insert(data);
-      },
-      updateCheckinRemote: async (id, status) => {
-        return await supabaseClient
-          .from('encontristas')
-          .update({ check_in: status })
-          .eq('id', id);
-      }
+    const result = await syncEngine.process({
+      supabase: supabaseClient
     });
 
     updateQueueCount();
@@ -354,7 +465,35 @@ export default function DashboardClient({
   }, [buscarEncontristas, showToast, updateQueueCount, isNavigating]);
 
   // ============================================================
-  // 🔥 ONLINE/OFFLINE (sem intervalo automático)
+  // SYNC AUTOMÁTICO CONTÍNUO
+  // ============================================================
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let interval: NodeJS.Timeout;
+
+    const startSyncLoop = () => {
+      interval = setInterval(() => {
+        if (!navigator.onLine) return;
+
+        const pending = queueService.getQueueCount();
+
+        if (pending > 0) {
+          console.log('[SYNC] auto executando...', pending);
+          syncOfflineData();
+        }
+      }, 10000);
+    };
+
+    startSyncLoop();
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [syncOfflineData]);
+
+  // ============================================================
+  // ONLINE/OFFLINE
   // ============================================================
   useEffect(() => {
     const update = () => {
@@ -377,6 +516,21 @@ export default function DashboardClient({
       window.removeEventListener('offline', update);
     };
   }, [syncOfflineData, showToast]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const handleMessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === 'SYNC_OFFLINE_DATA' && navigator.onLine) {
+        void syncOfflineData();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleMessage);
+    };
+  }, [syncOfflineData]);
 
   useEffect(() => {
     if (modoSimples && inputRef.current) {
@@ -410,7 +564,7 @@ export default function DashboardClient({
     });
   }, []);
 
-  // --- EVENTO PERSONALIZADO PARA REFRESH (único mantido) ---
+  // --- EVENTO PERSONALIZADO PARA REFRESH ---
   useEffect(() => {
     const handleDashboardRefresh = () => {
       console.log('[DASHBOARD] Refresh manual disparado');
@@ -423,7 +577,7 @@ export default function DashboardClient({
   }, [buscarEncontristas]);
 
   // ============================================================
-  // 🔥 DEBOUNCE REFETCH (aumentado para 1000ms)
+  // DEBOUNCE REFETCH
   // ============================================================
   const debounceRefetch = useCallback(() => {
     if (isNavigating) return;
@@ -437,7 +591,7 @@ export default function DashboardClient({
   }, [buscarEncontristas, isNavigating]);
 
   // ============================================================
-  // 🔥 REALTIME SUPABASE (único source of truth)
+  // REALTIME SUPABASE
   // ============================================================
   useEffect(() => {
     const channel = supabase
@@ -537,7 +691,7 @@ export default function DashboardClient({
     updateQueueCount();
   }, [updateQueueCount]);
 
-  // 🔥 EFEITO PARA HIGHLIGHT DO CARD
+  // EFEITO PARA HIGHLIGHT DO CARD
   useEffect(() => {
     const term = searchTerm.trim();
     const isNumeric = /^\d+$/.test(term);
@@ -563,14 +717,13 @@ export default function DashboardClient({
   }, [filtered, getStatusPessoa]);
 
   // ============================================================
-  // 🔥 SORT CORRIGIDO COM PRIORIDADE PARA ID
+  // SORT CORRIGIDO
   // ============================================================
   const sorted = useMemo(() => {
     const term = debouncedSearch.trim();
     const isNumeric = /^\d+$/.test(term);
     
     return [...filtered].sort((a, b) => {
-      // 🔥 PRIORIDADE MÁXIMA: ID exato no topo
       if (isNumeric) {
         const aIsExact = String(a.id) === term;
         const bIsExact = String(b.id) === term;
@@ -579,14 +732,12 @@ export default function DashboardClient({
         if (!aIsExact && bIsExact) return 1;
       }
       
-      // Depois ordena por prioridade de status
       const statusA = statusMap.get(a.id);
       const statusB = statusMap.get(b.id);
       const priorityDiff = (statusB?.prioridade || 0) - (statusA?.prioridade || 0);
       
       if (priorityDiff !== 0) return priorityDiff;
       
-      // Por fim, ordena por ID (para consistência)
       return a.id - b.id;
     });
   }, [filtered, statusMap, debouncedSearch]);
@@ -644,7 +795,7 @@ export default function DashboardClient({
           return await supabase.from('encontristas').update({ check_in: status }).eq('id', id);
         },
         addToQueue: (item) => {
-          addToQueue(item);
+          queueService.enqueue(item);
           updateQueueCount();
         }
       }
@@ -682,7 +833,7 @@ export default function DashboardClient({
           return await supabase.from('encontristas').insert(data);
         },
         addToQueue: (item) => {
-          addToQueue(item);
+          queueService.enqueue(item);
           updateQueueCount();
         }
       }
@@ -721,7 +872,7 @@ export default function DashboardClient({
     setIsResetting(true);
     const resultado = await zerarSistemaCompleto(resetPassword);
     if (resultado.success) {
-      localStorage.removeItem('offlineQueue');
+      queueService.clearQueue();
       updateQueueCount();
       await buscarEncontristas();
       setIsResetModalOpen(false);
@@ -809,19 +960,26 @@ export default function DashboardClient({
     setTimeout(() => confirmCheckIn(), 100);
   };
 
-  // 🔥 NAVEGAÇÃO OTIMIZADA (sem delay e com bloqueio)
-  const handleNavigateToPatientPage = useCallback((id: number) => {
+  // ✅ NAVEGAÇÃO REFATORADA COM waitForCache
+  const handleNavigateToPatientPage = useCallback(async (id: number) => {
+    if (isNavigating) return;
+
     setIsNavigating(true);
-    setSelectedPatient(null);
-    
-    startTransition(() => {
-      router.push(`/dashboard/encontrista/${id}`);
-    });
-    
-    setTimeout(() => {
+
+    try {
+      if (!navigator.onLine) {
+        console.log('[OFFLINE] navegando direto');
+      } else {
+        await waitForCache();
+      }
+
+      await navigateTo(`/dashboard/encontrista/${id}`);
+    } catch (err) {
+      console.error('[NAV] erro', err);
+    } finally {
       setIsNavigating(false);
-    }, 500);
-  }, [router]);
+    }
+  }, [navigateTo, waitForCache, isNavigating]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24">
@@ -849,6 +1007,14 @@ export default function DashboardClient({
                 📱 Instalar App
               </motion.button>
             )}
+
+            {/* Botão Chat */}
+            <button
+              onClick={() => setChatbotOpen(true)}
+              className="hidden md:flex px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 items-center gap-2"
+              >
+              <MessageCircle size={16} /> Chat
+            </button>
 
             {/* Botões de toggle modo */}
             <div className="hidden md:flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -917,14 +1083,8 @@ export default function DashboardClient({
                     {isAdmin && (
                       <>
                         <div className="border-t border-slate-100 my-1" />
-                        <Link href="/dashboard/relatorio" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
-                          <FileText size={18} className="text-slate-500" /> Relatório
-                        </Link>
                         <Link href="/dashboard/equipe" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
                           <Shield size={18} className="text-slate-500" /> Equipe
-                        </Link>
-                        <Link href="/dashboard/medicamentos" onClick={() => setOpenMenu(false)} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
-                          <Pill size={18} className="text-slate-500" /> Farmácia
                         </Link>
                       </>
                     )}
@@ -989,7 +1149,7 @@ export default function DashboardClient({
           </motion.div>
         )}
 
-        {/* MINI STATS BAR PARA MOBILE (apenas em modo simples) */}
+        {/* MINI STATS BAR PARA MOBILE */}
         {modoSimples && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -1036,7 +1196,7 @@ export default function DashboardClient({
           </motion.div>
         )}
 
-        {/* SEARCH BAR COM INDICADOR DE DIGITAÇÃO */}
+        {/* SEARCH BAR */}
         <div className="flex flex-col gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
@@ -1049,14 +1209,12 @@ export default function DashboardClient({
               className="w-full pl-12 pr-4 py-5 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-orange-500/10 font-medium text-slate-700 shadow-sm transition-all text-base"
             />
             
-            {/* INDICADOR DE DIGITAÇÃO */}
             {isTyping && (
               <div className="absolute right-4 top-1/2 -translate-y-1/2">
                 <Loader2 size={18} className="text-orange-500 animate-spin" />
               </div>
             )}
             
-            {/* CONTADOR DE RESULTADOS */}
             {!isTyping && searchTerm && (
               <div className="absolute right-4 top-1/2 -translate-y-1/2">
                 <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
@@ -1065,19 +1223,6 @@ export default function DashboardClient({
               </div>
             )}
           </div>
-          
-          {/* Botões de ação para admin (apenas no modo completo) */}
-          {!modoSimples && isAdmin && (
-            <div className="flex gap-2">
-              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.csv" />
-              <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => fileInputRef.current?.click()} className="bg-white text-slate-600 border border-slate-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
-                <Upload size={20} /> <span className="hidden lg:inline">Importar</span>
-              </motion.button>
-              <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { setIsResetModalOpen(true); setResetError(null); }} className="bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 px-4 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
-                <Trash2 size={20} /> <span className="hidden lg:inline">Zerar</span>
-              </motion.button>
-            </div>
-          )}
         </div>
 
         {/* TÍTULO DOS RESULTADOS */}
@@ -1096,7 +1241,7 @@ export default function DashboardClient({
           </motion.div>
         )}
 
-        {/* LISTA MOBILE (apenas em modo simples) */}
+        {/* LISTA MOBILE */}
         {modoSimples && (
           <div className="space-y-3">
             <AnimatePresence mode="wait">
@@ -1179,7 +1324,7 @@ export default function DashboardClient({
           </div>
         )}
 
-        {/* LISTA DESKTOP (apenas em modo completo) */}
+        {/* LISTA DESKTOP */}
         {!modoSimples && (
           <motion.div
             animate={{ 
@@ -1304,7 +1449,7 @@ export default function DashboardClient({
 
       </main>
 
-      {/* FAB BUTTON (apenas em modo simples) */}
+      {/* 🔥 BOTÃO FAB (apenas no modo simples) */}
       {modoSimples && !chatbotOpen && (
         <div className="fixed bottom-6 right-6 z-40">
           <AnimatePresence>
@@ -1337,7 +1482,7 @@ export default function DashboardClient({
           </AnimatePresence>
 
           <motion.button
-            onClick={() => { setChatbotOpen(false); setFabOpen(!fabOpen); }}
+            onClick={() => setFabOpen(prev => !prev)}
             whileTap={{ scale: 0.9 }}
             transition={fastTransition}
             animate={{ rotate: fabOpen ? 45 : 0 }}
@@ -1348,7 +1493,7 @@ export default function DashboardClient({
         </div>
       )}
 
-      {/* Chatbot Widget */}
+      {/* 🔥 CHATBOT GLOBAL */}
       <ChatbotWidget
         isOpen={chatbotOpen}
         onOpenChange={(isOpen) => {
@@ -1357,9 +1502,7 @@ export default function DashboardClient({
         }}
       />
 
-      {/* MODAIS (mantidos iguais) */}
-      
-      {/* MODAL DE PENDÊNCIAS OFFLINE */}
+      {/* MODAIS */}
       <AnimatePresence>
         {showQueue && !modoSimples && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1372,39 +1515,44 @@ export default function DashboardClient({
               </div>
               <div className="p-5">
                 <div className="max-h-80 overflow-y-auto space-y-2 mb-5">
-                  {(getQueue() as OfflineQueueItem[]).length === 0 ? (
+                  {queueService.getQueue().length === 0 ? (
                     <div className="text-center py-8 text-slate-400">
                       <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-emerald-400" />
                       <p className="font-medium">Nenhuma pendência</p>
                       <p className="text-xs">Tudo sincronizado</p>
                     </div>
                   ) : (
-                    (getQueue() as OfflineQueueItem[]).map((item, i) => (
-                      <motion.div key={item._id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.12, ease: premiumEasing }} className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50">
-                        {item.tipo === 'novo' && item.dados && (
+                    queueService.getQueue().map((item, i) => {
+                      const summary = getQueueItemSummary(item);
+                      return (
+                        <motion.div
+                          key={item.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.12, ease: premiumEasing }}
+                          className="text-sm border border-slate-200 p-3 rounded-xl bg-slate-50"
+                        >
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">+</div>
-                            <div><p className="font-bold text-slate-700">Novo paciente</p><p className="text-xs text-slate-500">{item.dados.nome}</p></div>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${summary.accent}`}>
+                              {summary.icon}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-700">{summary.title}</p>
+                              <p className="text-xs text-slate-500">{summary.detail}</p>
+                            </div>
                           </div>
-                        )}
-                        {item.tipo === 'checkin' && item.id !== undefined && item.status !== undefined && (
-                          <div className="flex items-center gap-2">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${item.status ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>{item.status ? '✓' : '✗'}</div>
-                            <div><p className="font-bold text-slate-700">Check-in</p><p className="text-xs text-slate-500">ID: {item.id} → {item.status ? 'Presente' : 'Ausente'}</p></div>
+                          <div className="text-[9px] text-slate-400 mt-1 flex items-center justify-between">
+                            <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+                            <span>{item.status === 'failed' ? `falhou ${item.retryCount}x` : `${item.status} • ${item.retryCount}x`}</span>
                           </div>
-                        )}
-                        {item.createdAt && (
-                          <div className="text-[9px] text-slate-400 mt-1">
-                            {new Date(item.createdAt).toLocaleTimeString()}
-                          </div>
-                        )}
-                      </motion.div>
-                    ))
+                        </motion.div>
+                      );
+                    })
                   )}
                 </div>
                 <div className="flex gap-3">
                   <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={async () => { await syncOfflineData(); setShowQueue(false); }} disabled={queueCount === 0} className={`flex-1 py-3 rounded-xl font-bold transition-all ${queueCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'}`}>☁️ Sincronizar</motion.button>
-                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { if (confirm('Limpar TODAS as pendências? Essa ação não pode ser desfeita.')) { localStorage.removeItem('offlineQueue'); updateQueueCount(); setShowQueue(false); showToast('warning', 'Fila limpa', 'Pendências removidas localmente'); } }} disabled={queueCount === 0} className={`flex-1 py-3 rounded-xl font-bold transition-all ${queueCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-500 text-white shadow-md hover:bg-red-600'}`}>🗑️ Limpar</motion.button>
+                  <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { if (confirm('Limpar TODAS as pendências? Essa ação não pode ser desfeita.')) { queueService.clearQueue(); updateQueueCount(); setShowQueue(false); showToast('warning', 'Fila limpa', 'Pendências removidas localmente'); } }} disabled={queueCount === 0} className={`flex-1 py-3 rounded-xl font-bold transition-all ${queueCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-500 text-white shadow-md hover:bg-red-600'}`}>🗑️ Limpar</motion.button>
                 </div>
               </div>
             </motion.div>
@@ -1412,7 +1560,6 @@ export default function DashboardClient({
         )}
       </AnimatePresence>
 
-      {/* TOAST NOTIFICATION */}
       <AnimatePresence>
         {toast && (
           <motion.div initial={{ opacity: 0, y: 30, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 30, scale: 0.9 }} transition={{ type: 'spring', damping: 20 }} className="fixed bottom-6 right-6 z-[100]">
@@ -1425,7 +1572,6 @@ export default function DashboardClient({
         )}
       </AnimatePresence>
 
-      {/* MODAL NOVO PACIENTE */}
       <AnimatePresence>
         {isModalOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1453,7 +1599,6 @@ export default function DashboardClient({
         )}
       </AnimatePresence>
 
-      {/* MODAL IMPORTAR CSV */}
       <AnimatePresence>
         {isImportConfirmOpen && fileToImport && !modoSimples && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1470,7 +1615,6 @@ export default function DashboardClient({
         )}
       </AnimatePresence>
 
-      {/* MODAL CONFIRMAR CHECK-IN */}
       <AnimatePresence>
         {checkInTarget && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1489,7 +1633,6 @@ export default function DashboardClient({
         )}
       </AnimatePresence>
 
-      {/* MODAL ZERAR SISTEMA */}
       <AnimatePresence>
         {isResetModalOpen && !modoSimples && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fastTransition} className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -1509,6 +1652,16 @@ export default function DashboardClient({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 🔥 INPUT FILE OCULTO (GLOBAL PARA IMPORTAÇÃO) */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        className="hidden"
+        accept=".txt,.csv"
+      />
+
     </div>
   );
 }

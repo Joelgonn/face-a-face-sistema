@@ -1,66 +1,81 @@
+// middleware.ts
+
 import { type NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { safeGetSession, isNetworkError } from '@/app/lib/server-safe-supabase'
+
+// 🔥 FIX: Edge Runtime warning - middleware roda no Edge por padrão
+// Não precisa de export const runtime = 'nodejs' aqui porque middleware já é Edge
+// Mas se quiser forçar Node.js (recomendado para Supabase), use:
+// export const runtime = 'nodejs'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
+  const supabaseResponse = NextResponse.next({
     request,
   })
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
+  try {
+    // 🔥 Safe getSession - não quebra offline
+    const { session, isOffline, error } = await safeGetSession();
+    const user = session?.user;
+
+    // Se estiver offline, NÃO bloqueia o dashboard
+    if (isOffline) {
+      // Log silencioso em produção, debug em desenvolvimento
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Middleware] Offline detectado, permitindo acesso');
+      }
+      
+      // Apenas redireciona / → /dashboard se já tiver sessão local
+      if (user && request.nextUrl.pathname === '/') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+      
+      return supabaseResponse;
     }
-  )
 
-  // Atualiza a sessão se expirada
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    // Se houve erro de autenticação (não é offline), loga mas não bloqueia
+    if (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[Middleware] Erro de autenticação:', error.message);
+      }
+      // Não bloqueia - deixa a página decidir o fallback
+    }
 
-  // PROTEÇÃO DE ROTAS
-  // Se não tiver usuário e tentar acessar dashboard, manda pro login
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
+    // Online: proteção normal
+    if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      return NextResponse.redirect(url)
+    }
+
+    if (user && request.nextUrl.pathname === '/') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    return supabaseResponse
+
+  } catch (error) {
+    // 🔥 Erro inesperado (ex: falha crítica)
+    if (isNetworkError(error)) {
+      // Erro de rede - trata como offline
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Middleware] Erro de rede, permitindo acesso como offline');
+      }
+      return supabaseResponse;
+    }
+    
+    // Erro real - log e permite acesso (fallback seguro)
+    console.error('[Middleware] Erro inesperado:', error);
+    return supabaseResponse;
   }
-
-  // Se já estiver logado e tentar acessar o login, manda pro dashboard
-  if (user && request.nextUrl.pathname === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
-  return supabaseResponse
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

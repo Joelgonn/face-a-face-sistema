@@ -1,6 +1,7 @@
 // /infra/repositories/encontrista.repository.ts
 
 import { Database } from '@/types/supabase'
+import { SupabaseClient } from '@supabase/supabase-js'
 
 // --- TIPAGEM ---
 type EncontristaRow = Database['public']['Tables']['encontristas']['Row']
@@ -16,7 +17,10 @@ export type EncontristaComPrescricoes = EncontristaRow & {
 export type EncontristaCompleto = EncontristaRow & {
   prescricoes: (Pick<PrescricaoRow, 'id' | 'nome_medicamento' | 'dosagem' | 'posologia' | 'horario_inicial'>)[]
   historico: (HistoricoRow & {
-    prescricao: Pick<PrescricaoRow, 'nome_medicamento' | 'dosagem'> | null
+    prescricao: {
+      nome_medicamento: string | null
+      dosagem: string | null
+    } | null
   })[]
 }
 
@@ -25,11 +29,9 @@ type RepositoryResponse<T> = {
   error: string | null
 }
 
-// --- TIPO DO CLIENT SUPABASE (GENÉRICO) ---
-type SupabaseClient = any
-
 // --- FACTORY QUE RECEBE O CLIENT INJETADO ---
-export function createEncontristaRepository(supabase: SupabaseClient) {
+// 🔥 Repository NÃO trata offline - apenas dados
+export function createEncontristaRepository(supabase: SupabaseClient<Database>) {
   return {
 
     async findAll(): Promise<RepositoryResponse<EncontristaComPrescricoes[]>> {
@@ -48,14 +50,20 @@ export function createEncontristaRepository(supabase: SupabaseClient) {
           .order('nome', { ascending: true })
 
         if (error) {
-          console.error('[REPOSITORY] Erro ao buscar encontristas:', error)
+          // 🔥 Log apenas em desenvolvimento
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('[REPOSITORY] Erro ao buscar encontristas:', error)
+          }
           return { data: null, error: error.message }
         }
 
         return { data: data as EncontristaComPrescricoes[], error: null }
 
       } catch (err) {
-        console.error('[REPOSITORY] Erro inesperado:', err)
+        // 🔥 Só log em desenvolvimento
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[REPOSITORY] Erro inesperado:', err)
+        }
         return { data: null, error: 'Erro inesperado ao buscar dados.' }
       }
     },
@@ -79,7 +87,9 @@ export function createEncontristaRepository(supabase: SupabaseClient) {
           .single()
 
         if (encontristaError) {
-          console.error('[REPOSITORY] Erro ao buscar encontrista:', encontristaError)
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('[REPOSITORY] Erro ao buscar encontrista:', encontristaError)
+          }
           return { data: null, error: encontristaError.message }
         }
 
@@ -87,7 +97,7 @@ export function createEncontristaRepository(supabase: SupabaseClient) {
         const prescricoesIds: number[] = prescricoes.map((p: { id: number }) => p.id)
 
         // 2. Buscar histórico (apenas se houver prescrições)
-        let historico: (HistoricoRow & { prescricao: { nome_medicamento: string; dosagem: string } | null })[] = []
+        let historico: (HistoricoRow & { prescricao: { nome_medicamento: string | null; dosagem: string | null } | null })[] = []
 
         if (prescricoesIds.length > 0) {
           const { data: historicoData, error: historicoError } = await supabase
@@ -103,7 +113,9 @@ export function createEncontristaRepository(supabase: SupabaseClient) {
             .order('data_hora', { ascending: false })
 
           if (historicoError) {
-            console.error('[REPOSITORY] Erro ao buscar histórico:', historicoError)
+            if (process.env.NODE_ENV !== 'production') {
+              console.error('[REPOSITORY] Erro ao buscar histórico:', historicoError)
+            }
           } else {
             historico = historicoData || []
           }
@@ -119,7 +131,9 @@ export function createEncontristaRepository(supabase: SupabaseClient) {
         }
 
       } catch (err) {
-        console.error('[REPOSITORY] Erro inesperado:', err)
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[REPOSITORY] Erro inesperado:', err)
+        }
         return { data: null, error: 'Erro inesperado ao buscar dados do paciente.' }
       }
     }

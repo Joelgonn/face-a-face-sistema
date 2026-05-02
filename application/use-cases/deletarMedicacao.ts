@@ -1,5 +1,7 @@
 // /application/use-cases/deletarMedicacao.ts
 
+import { createQueueItem, type QueueItem } from '@/domain/offline/queue.types'
+
 // --- TIPAGEM ---
 export type DeletarMedicacaoParams = {
   medicacaoId: number
@@ -9,7 +11,7 @@ export type DeletarMedicacaoParams = {
 export type DeletarMedicacaoDeps = {
   deleteHistoricoRemote: (medicacaoId: number) => Promise<{ data: null; error: unknown }>
   deletePrescricaoRemote: (medicacaoId: number) => Promise<{ data: null; error: unknown }>
-  addToQueue: (item: unknown) => void
+  addToQueue: (item: QueueItem) => void
 }
 
 export type DeletarMedicacaoResult = {
@@ -36,10 +38,11 @@ export async function deletarMedicacao(
 
   // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'deletar_medicacao',
-      id: medicacaoId
-    })
+    deps.addToQueue(
+      createQueueItem('deletar_medicacao', {
+        medicacaoRef: { id: medicacaoId }
+      })
+    )
 
     return {
       success: true,

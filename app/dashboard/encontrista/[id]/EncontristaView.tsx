@@ -1,32 +1,16 @@
 'use client'
 
-import { motion, AnimatePresence, Transition } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, User, AlertTriangle, Pill, History, UserCheck, 
   ChevronDown, ChevronUp, Clock, CheckCircle2, Pencil, X, 
-  Trash2, Loader2, CalendarClock, ThumbsUp, Check, Plus
+  Trash2, Loader2, CalendarClock, ThumbsUp, Check, Plus, WifiOff
 } from 'lucide-react'
 
-// --- TIPAGEM ---
-type Prescricao = {
-  id: number
-  nome_medicamento: string | null
-  dosagem: string | null
-  posologia: string | null
-  horario_inicial: string | null
-}
+// 🔥 IMPORTANDO TIPOS DO CONTAINER (ÚNICA FONTE DA VERDADE)
+import type { Prescricao, HistoricoItem } from './EncontristaContainer'
 
-type HistoricoItem = {
-  id: number
-  data_hora: string | null
-  administrador: string | null
-  prescricao_id: number
-  prescricao: {
-    nome_medicamento: string | null
-    dosagem: string | null
-  } | null
-}
-
+// --- TIPAGEM (apenas o que não vem do Container) ---
 type PacienteCompleto = {
   id: number
   nome: string | null
@@ -62,6 +46,10 @@ type Props = {
   saving: boolean
   infoExpanded: boolean
   setInfoExpanded: (value: boolean) => void
+
+  // --- OFFLINE PROPS ---
+  isOffline?: boolean
+  isDegradedMode?: boolean
 
   // --- MODAL DE MEDICAÇÃO ---
   isModalOpen: boolean
@@ -141,18 +129,6 @@ const formatarNomeEnfermeiro = (email: string | null) => {
   return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim()
 }
 
-// --- EASING PREMIUM (iOS-LIKE) - COM TIPAGEM CORRETA ---
-const fastTransition: Transition = {
-  duration: 0.18,
-  ease: [0.22, 1, 0.36, 1]
-}
-
-const springTransition: Transition = {
-  type: 'spring',
-  stiffness: 350,
-  damping: 28
-}
-
 export function EncontristaView({
   paciente,
   medicacoes,
@@ -161,6 +137,8 @@ export function EncontristaView({
   saving,
   infoExpanded,
   setInfoExpanded,
+  isOffline = false,
+  isDegradedMode = false,
   isModalOpen,
   setIsModalOpen,
   medNome,
@@ -211,11 +189,37 @@ export function EncontristaView({
   onPosologiaBlur
 }: Props) {
 
-  // --- OVERLAY DE LOADING GLOBAL ---
   const showOverlay = loading || saving
 
+  // 🔥 Tela de fallback para modo degradado (offline sem dados)
+  if (isDegradedMode && paciente.nome === 'Carregando...') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 max-w-md text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <WifiOff className="h-8 w-8 text-amber-500" />
+          </div>
+          <h2 className="text-xl font-bold text-amber-700 mb-2">Modo Offline</h2>
+          <p className="text-amber-600 mb-4">
+            Não foi possível carregar os dados completos do paciente.
+            Conecte-se à internet para acessar todas as informações.
+          </p>
+          <button
+            onClick={onGoBack}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg transition-colors"
+          >
+            Voltar ao Dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // 🔥 ESTRUTURA PRINCIPAL - COM DIV RAIZ ÚNICA
   return (
-    <>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+
+      {/* OVERLAY DE LOADING */}
       {showOverlay && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-white rounded-2xl px-6 py-4 shadow-xl flex items-center gap-3">
@@ -225,289 +229,273 @@ export function EncontristaView({
         </div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={fastTransition}
-        className="min-h-screen bg-gradient-to-b from-slate-50 to-white"
+      {/* OFFLINE BANNER */}
+      {isOffline && !isDegradedMode && (
+        <div className="sticky top-0 z-30 bg-amber-500 text-white text-sm py-2 px-4 text-center flex items-center justify-center gap-2">
+          <WifiOff size={16} />
+          <span>Modo offline - Você está desconectado. As alterações serão sincronizadas quando a internet voltar.</span>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div
+        className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100"
+        style={{ top: isOffline && !isDegradedMode ? '40px' : '0px' }}
       >
-        {/* HEADER COM CONTINUIDADE DO CARD */}
-        <motion.div
-          layoutId={`card-${paciente.id}`}
-          className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100"
-        >
-          <div className="max-w-3xl mx-auto px-4 py-4">
-            <div className="flex items-center gap-4">
-              {/* BOTÃO VOLTAR COM ONGOBACK */}
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                transition={fastTransition}
-                onClick={onGoBack}
-                className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <ArrowLeft size={20} />
-              </motion.button>
-
-              <div className="flex-1">
-                <motion.h1
-                  layoutId={`card-title-${paciente.id}`}
-                  className="text-lg md:text-xl font-bold text-slate-800"
-                >
-                  {paciente.nome}
-                </motion.h1>
-                <p className="text-xs text-slate-500">
-                  ID: {paciente.id} • {paciente.check_in ? 'Presente' : 'Ausente'}
-                </p>
-              </div>
-
-              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${paciente.check_in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                {paciente.check_in ? <UserCheck size={14} className="inline mr-1" /> : null}
-                {paciente.check_in ? 'Presente' : 'Ausente'}
-              </div>
-
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                transition={fastTransition}
-                onClick={onOpenEditModal}
-                className="p-2 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"
-                title="Editar paciente"
-              >
-                <Pencil size={18} />
-              </motion.button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* CONTEÚDO */}
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-          
-          {/* INFORMAÇÕES DO PACIENTE */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05, ...fastTransition }}
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
-          >
+        <div className="max-w-3xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
             <button
-              onClick={() => setInfoExpanded(!infoExpanded)}
-              className="w-full p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+              onClick={onGoBack}
+              className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center text-white">
-                  <User size={24} />
-                </div>
-                <div className="text-left">
-                  <h2 className="font-bold text-slate-800">{paciente.nome}</h2>
-                  <p className="text-sm text-slate-500">Responsável: {paciente.responsavel || 'Não informado'}</p>
-                </div>
-              </div>
-              {infoExpanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+              <ArrowLeft size={20} />
             </button>
 
-            <AnimatePresence>
-              {infoExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={fastTransition}
-                  className="border-t border-slate-100"
-                >
-                  <div className="p-5 space-y-4">
-                    {paciente.alergias && (
-                      <div className="flex items-start gap-3 p-3 bg-rose-50 rounded-xl border border-rose-100">
-                        <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Alergias / Atenção</p>
-                          <p className="text-sm font-semibold text-rose-700">{paciente.alergias}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {paciente.observacoes && (
-                      <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                        <Clock size={18} className="text-amber-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Observações</p>
-                          <p className="text-sm font-medium text-amber-700">{paciente.observacoes}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {!paciente.alergias && !paciente.observacoes && (
-                      <p className="text-slate-400 text-sm italic text-center py-4">Nenhuma informação adicional cadastrada.</p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          {/* MEDICAÇÕES */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, ...fastTransition }}
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                <Pill className="text-orange-500" size={20} />
-                Medicações
-                <span className="text-xs text-slate-400 font-normal ml-2">({medicacoes.length})</span>
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                disabled={saving}
-                className="bg-orange-50 text-orange-700 hover:bg-orange-100 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
-              >
-                <Plus size={14} /> Adicionar
-              </button>
+            <div className="flex-1">
+              <h1 className="text-lg md:text-xl font-bold text-slate-800">
+                {paciente.nome}
+              </h1>
+              <p className="text-xs text-slate-500">
+                ID: {paciente.id} • {paciente.check_in ? 'Presente' : 'Ausente'}
+              </p>
             </div>
 
-            {medicacoes.length === 0 ? (
-              <p className="text-slate-400 text-sm italic text-center py-8">Nenhuma medicação cadastrada.</p>
-            ) : (
-              <div className="space-y-3">
-                {medicacoes.map((med, index) => {
-                  const status = getStatus(med, historico)
-                  const isCritical = status.bg.includes('red') || status.bg.includes('amber')
-                  
-                  return (
-                    <motion.div
-                      key={med.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.05 * index, ...fastTransition }}
-                      className={`p-4 rounded-xl border transition-all ${status.bg} ${isCritical ? 'ring-1 ring-red-200' : ''}`}
-                    >
+            <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${paciente.check_in ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+              {paciente.check_in ? <UserCheck size={14} className="inline mr-1" /> : null}
+              {paciente.check_in ? 'Presente' : 'Ausente'}
+            </div>
+
+            <button
+              onClick={onOpenEditModal}
+              disabled={saving}
+              className={`p-2 rounded-xl transition-colors ${
+                saving 
+                  ? 'text-slate-300 cursor-not-allowed' 
+                  : 'text-slate-400 hover:text-orange-500 hover:bg-orange-50'
+              }`}
+              title="Editar paciente"
+            >
+              <Pencil size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* CONTEÚDO PRINCIPAL */}
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        
+        {/* INFORMAÇÕES DO PACIENTE */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <button
+            onClick={() => setInfoExpanded(!infoExpanded)}
+            className="w-full p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center text-white">
+                <User size={24} />
+              </div>
+              <div className="text-left">
+                <h2 className="font-bold text-slate-800">{paciente.nome}</h2>
+                <p className="text-sm text-slate-500">Responsável: {paciente.responsavel || 'Não informado'}</p>
+              </div>
+            </div>
+            {infoExpanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+          </button>
+
+          <AnimatePresence>
+            {infoExpanded && (
+              <div className="border-t border-slate-100">
+                <div className="p-5 space-y-4">
+                  {paciente.alergias && (
+                    <div className="flex items-start gap-3 p-3 bg-rose-50 rounded-xl border border-rose-100">
+                      <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Alergias / Atenção</p>
+                        <p className="text-sm font-semibold text-rose-700">{paciente.alergias}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {paciente.observacoes && (
+                    <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                      <Clock size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Observações</p>
+                        <p className="text-sm font-medium text-amber-700">{paciente.observacoes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!paciente.alergias && !paciente.observacoes && (
+                    <p className="text-slate-400 text-sm italic text-center py-4">Nenhuma informação adicional cadastrada.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* MEDICAÇÕES */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="font-bold text-slate-800 flex items-center gap-2">
+              <Pill className="text-orange-500" size={20} />
+              Medicações
+              <span className="text-xs text-slate-400 font-normal ml-2">({medicacoes.length})</span>
+            </h2>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              disabled={saving}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                saving 
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                  : 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+              }`}
+              title="Adicionar medicação"
+            >
+              <Plus size={14} /> Adicionar
+            </button>
+          </div>
+
+          {medicacoes.length === 0 ? (
+            <p className="text-slate-400 text-sm italic text-center py-8">Nenhuma medicação cadastrada.</p>
+          ) : (
+            <div className="space-y-3">
+              {medicacoes.map((med) => {
+                const status = getStatus(med, historico)
+                const isCritical = status.bg.includes('red') || status.bg.includes('amber')
+                // 🔥 Verifica se já foi administrado para desabilitar o botão
+                const isAdministrado = status.texto.includes('Administrado') || status.texto.includes('pendente sync')
+                
+                return (
+                  <div
+                    key={med.id}
+                    className={`p-4 rounded-xl border transition-all ${status.bg} ${isCritical ? 'ring-1 ring-red-200' : ''}`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-slate-800">{med.nome_medicamento}</h3>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded-full">{med.dosagem}</span>
+                          <span className="text-xs text-slate-500">{med.posologia}</span>
+                          <span className="text-xs text-slate-400">Início: {med.horario_inicial}</span>
+                        </div>
+                        <div className="mt-2">
+                          <span className={`text-xs font-bold ${status.cor}`}>{status.texto}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onAdministrar(med)}
+                          disabled={saving || isAdministrado}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 ${
+                            saving || isAdministrado
+                              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                              : isCritical 
+                                ? 'bg-red-500 text-white hover:bg-red-600' 
+                                : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                          }`}
+                          title={isAdministrado ? 'Já administrado hoje' : 'Administrar'}
+                        >
+                          {isCritical ? <AlertTriangle size={12} className="inline mr-1" /> : <CheckCircle2 size={12} className="inline mr-1" />}
+                          Administrar
+                        </button>
+                        <button
+                          onClick={() => onDeleteMedicacao(med.id)}
+                          disabled={saving}
+                          className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                            saving
+                              ? 'text-slate-300 cursor-not-allowed'
+                              : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+                          }`}
+                          title="Excluir medicação"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* HISTÓRICO */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+          <h2 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+            <History className="text-blue-500" size={20} />
+            Histórico de Administração
+            <span className="text-xs text-slate-400 font-normal ml-2">({historico.length})</span>
+          </h2>
+
+          {historico.length === 0 ? (
+            <p className="text-slate-400 text-sm italic text-center py-8">Nenhum registro de administração ainda.</p>
+          ) : (
+            <div className="relative space-y-4">
+              <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>
+              {historico.map((item) => {
+                const { hora, data } = formatarHora(item.data_hora)
+                return (
+                  <div
+                    key={item.id}
+                    className="relative pl-8 group"
+                  >
+                    <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
+                      <Check size={10} className="text-emerald-700" />
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <h3 className="font-bold text-slate-800">{med.nome_medicamento}</h3>
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded-full">{med.dosagem}</span>
-                            <span className="text-xs text-slate-500">{med.posologia}</span>
-                            <span className="text-xs text-slate-400">Início: {med.horario_inicial}</span>
-                          </div>
-                          <div className="mt-2">
-                            <span className={`text-xs font-bold ${status.cor}`}>{status.texto}</span>
-                          </div>
+                          <p className="font-medium text-slate-800 text-sm">
+                            {item.prescricao?.nome_medicamento || 'Medicação excluída'}
+                          </p>
+                          <p className="text-xs text-slate-500">{item.prescricao?.dosagem}</p>
+                          <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                            <User size={10} />
+                            {formatarNomeEnfermeiro(item.administrador)}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-slate-700">{hora}</p>
+                            <p className="text-[10px] text-slate-400">{data}</p>
+                          </div>
                           <button
-                            onClick={() => onAdministrar(med)}
+                            onClick={() => onDeleteHistory(item.id)}
                             disabled={saving}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 ${isCritical ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
+                            className={`p-1 rounded transition-colors disabled:opacity-50 ${
+                              saving
+                                ? 'text-slate-300 cursor-not-allowed'
+                                : 'text-slate-300 hover:text-red-500 hover:bg-red-50'
+                            }`}
+                            title="Excluir registro"
                           >
-                            {isCritical ? <AlertTriangle size={12} className="inline mr-1" /> : <CheckCircle2 size={12} className="inline mr-1" />}
-                            Administrar
-                          </button>
-                          <button
-                            onClick={() => onDeleteMedicacao(med.id)}
-                            disabled={saving}
-                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Excluir medicação"
-                          >
-                            <Trash2 size={16} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
-                    </motion.div>
-                  )
-                })}
-              </div>
-            )}
-          </motion.div>
-
-          {/* HISTÓRICO */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, ...fastTransition }}
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5"
-          >
-            <h2 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-              <History className="text-blue-500" size={20} />
-              Histórico de Administração
-              <span className="text-xs text-slate-400 font-normal ml-2">({historico.length})</span>
-            </h2>
-
-            {historico.length === 0 ? (
-              <p className="text-slate-400 text-sm italic text-center py-8">Nenhum registro de administração ainda.</p>
-            ) : (
-              <div className="relative space-y-4">
-                <div className="absolute left-2.5 top-3 bottom-3 w-0.5 bg-slate-100 rounded-full"></div>
-                {historico.map((item, index) => {
-                  const { hora, data } = formatarHora(item.data_hora)
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.02 * index, ...fastTransition }}
-                      className="relative pl-8 group"
-                    >
-                      <div className="absolute left-0 top-1 w-5 h-5 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center z-10 shadow-sm">
-                        <Check size={10} className="text-emerald-700" />
-                      </div>
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 group-hover:bg-slate-100 transition-colors">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="font-medium text-slate-800 text-sm">
-                              {item.prescricao?.nome_medicamento || 'Medicação excluída'}
-                            </p>
-                            <p className="text-xs text-slate-500">{item.prescricao?.dosagem}</p>
-                            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                              <User size={10} />
-                              {formatarNomeEnfermeiro(item.administrador)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-right">
-                              <p className="text-sm font-bold text-slate-700">{hora}</p>
-                              <p className="text-[10px] text-slate-400">{data}</p>
-                            </div>
-                            <button
-                              onClick={() => onDeleteHistory(item.id)}
-                              disabled={saving}
-                              className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                              title="Excluir registro"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )
-                })}
-              </div>
-            )}
-          </motion.div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
-      </motion.div>
+      </div>
 
-      {/* --- MODAL NOVA MEDICAÇÃO --- */}
+      {/* ============================================================ */}
+      {/* MODAIS (TODOS FORA DO CONTEÚDO PRINCIPAL, DENTRO DA DIV RAIZ) */}
+      {/* ============================================================ */}
+
+      {/* MODAL NOVA MEDICAÇÃO */}
       <AnimatePresence>
         {isModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
-            >
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
               <div className="p-5 flex justify-between items-center border-b border-slate-100">
                 <h2 className="text-xl font-black text-orange-600">Nova Medicação</h2>
-                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></button>
               </div>
               <div className="p-5 space-y-4">
                 <div className="relative" ref={wrapperRef}>
@@ -583,28 +571,16 @@ export function EncontristaView({
                   Salvar Medicação
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* --- MODAL CONFIRMAR ADMINISTRAÇÃO --- */}
+      {/* MODAL CONFIRMAR ADMINISTRAÇÃO */}
       <AnimatePresence>
         {isAdministerModalOpen && selectedPrescricao && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100"
-            >
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-100">
               <div className="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 size={28} className="text-emerald-600" />
               </div>
@@ -643,28 +619,16 @@ export function EncontristaView({
                   Confirmar
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* --- MODAL EXCLUIR MEDICAÇÃO --- */}
+      {/* MODAL EXCLUIR MEDICAÇÃO */}
       <AnimatePresence>
         {medicationToDelete !== null && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-rose-100"
-            >
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-rose-100">
               <div className="w-16 h-16 bg-rose-50 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <Trash2 className="text-rose-500 w-8 h-8" />
               </div>
@@ -674,28 +638,16 @@ export function EncontristaView({
                 <button onClick={() => setMedicationToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button onClick={onConfirmDeleteMedication} disabled={saving} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold shadow-md hover:bg-rose-700 transition-all disabled:opacity-50">Excluir</button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* --- MODAL EXCLUIR HISTÓRICO --- */}
+      {/* MODAL EXCLUIR HISTÓRICO */}
       <AnimatePresence>
         {historyToDelete !== null && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-amber-100"
-            >
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-amber-100">
               <div className="w-16 h-16 bg-amber-50 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <History className="text-amber-500 w-8 h-8" />
               </div>
@@ -707,28 +659,16 @@ export function EncontristaView({
                 <button onClick={() => setHistoryToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button onClick={onConfirmDeleteHistory} disabled={saving} className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-bold shadow-md hover:bg-amber-700 transition-all disabled:opacity-50">Apagar Registro</button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* --- MODAL ALERTA DE ALERGIA --- */}
+      {/* MODAL ALERTA DE ALERGIA */}
       <AnimatePresence>
         {allergyWarning && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-6"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border-4 border-red-100"
-            >
+          <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border-4 border-red-100">
               <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
                 <AlertTriangle className="text-red-600 w-10 h-10" />
               </div>
@@ -752,31 +692,19 @@ export function EncontristaView({
                   Cancelar
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* --- MODAL EDITAR PACIENTE --- */}
+      {/* MODAL EDITAR PACIENTE */}
       <AnimatePresence>
         {isEditModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={fastTransition}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={springTransition}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100"
-            >
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
               <div className="p-5 flex justify-between items-center border-b border-slate-100">
                 <h2 className="text-xl font-black text-orange-600">Editar Dados</h2>
-                <motion.button whileTap={{ scale: 0.95 }} transition={fastTransition} onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></motion.button>
+                <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></button>
               </div>
               <form onSubmit={onUpdatePessoa} className="p-5 space-y-4">
                 <div>
@@ -802,10 +730,10 @@ export function EncontristaView({
                   Salvar Alterações
                 </button>
               </form>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   )
 }

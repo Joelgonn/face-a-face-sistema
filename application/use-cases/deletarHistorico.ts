@@ -1,5 +1,7 @@
 // /application/use-cases/deletarHistorico.ts
 
+import { createQueueItem, type QueueItem } from '@/domain/offline/queue.types'
+
 // --- TIPAGEM ---
 export type DeletarHistoricoParams = {
   historicoId: number
@@ -8,7 +10,7 @@ export type DeletarHistoricoParams = {
 
 export type DeletarHistoricoDeps = {
   deleteRemote: (historicoId: number) => Promise<{ data: null; error: unknown }>
-  addToQueue: (item: unknown) => void
+  addToQueue: (item: QueueItem) => void
 }
 
 export type DeletarHistoricoResult = {
@@ -35,10 +37,11 @@ export async function deletarHistorico(
 
   // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'deletar_historico',
-      id: historicoId
-    })
+    deps.addToQueue(
+      createQueueItem('deletar_historico', {
+        historicoRef: { id: historicoId }
+      })
+    )
 
     return {
       success: true,

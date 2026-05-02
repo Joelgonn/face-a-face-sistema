@@ -1,15 +1,11 @@
 // /application/use-cases/toggleCheckin.ts
 
+import { createQueueItem, type QueueItem } from '@/domain/offline/queue.types'
+
 type ToggleCheckinParams = {
   id: number
   statusAtual: boolean | null
   isOnline: boolean
-}
-
-type QueueItem = {
-  tipo: 'checkin'
-  id: number
-  status: boolean
 }
 
 type ToggleCheckinDependencies = {
@@ -34,11 +30,12 @@ export async function toggleCheckin(
 
   // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'checkin',
-      id,
-      status: novoStatus
-    })
+    deps.addToQueue(
+      createQueueItem('checkin', {
+        pacienteRef: { id },
+        check_in: novoStatus
+      })
+    )
 
     return {
       novoStatus,

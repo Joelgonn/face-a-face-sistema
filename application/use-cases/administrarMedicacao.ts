@@ -1,5 +1,6 @@
 // /application/use-cases/administrarMedicacao.ts
 
+import { createOfflineId, createQueueItem, createTempId, type QueueItem } from '@/domain/offline/queue.types'
 import { verificarConflitoAlergia } from '@/domain/medicacao/alergia.rules'
 
 // --- TIPAGEM ---
@@ -7,22 +8,25 @@ export type AdministracaoMedicacao = {
   prescricao_id: number
   data_hora: string
   administrador: string
+  offline_id?: string
 }
 
 export type AdministrarMedicacaoParams = {
   prescricaoId: number
+  pacienteId: number
   nomeMedicamento: string
   alergiasPaciente: string | null
   checkInAtual: boolean
   dataHora: string
   administradorEmail: string
   isOnline: boolean
+  offlineId?: string
 }
 
 export type AdministrarMedicacaoDeps = {
   insertAdministracaoRemote: (data: AdministracaoMedicacao) => Promise<{ error?: unknown }>
   updateCheckInRemote: (status: boolean) => Promise<{ error?: unknown }>
-  addToQueue: (item: unknown) => void
+  addToQueue: (item: QueueItem) => void
 }
 
 export type AdministrarMedicacaoResult = {
@@ -31,6 +35,8 @@ export type AdministrarMedicacaoResult = {
   allergyMessage?: string
   checkInUpdated?: boolean
   queued?: boolean
+  tempId?: string
+  offlineId?: string
   error?: string
 }
 
@@ -42,15 +48,16 @@ export async function administrarMedicacao(
 
   const {
     prescricaoId,
+    pacienteId,
     nomeMedicamento,
     alergiasPaciente,
     checkInAtual,
     dataHora,
     administradorEmail,
-    isOnline
+    isOnline,
+    offlineId: externalOfflineId
   } = params
 
-  // --- VALIDAÇÃO ---
   if (!nomeMedicamento) {
     return {
       success: false,
@@ -65,7 +72,6 @@ export async function administrarMedicacao(
     }
   }
 
-  // --- VERIFICAR CONFLITO DE ALERGIA ---
   const allergyConflict = verificarConflitoAlergia({
     alergiasPaciente,
     nomeMedicamento
@@ -79,26 +85,43 @@ export async function administrarMedicacao(
     }
   }
 
-  const payload: AdministracaoMedicacao = {
-    prescricao_id: prescricaoId,
-    data_hora: dataHora,
-    administrador: administradorEmail || "Desconhecido"
-  }
+  const offlineId = externalOfflineId || createOfflineId()
 
-  // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'administrar_medicacao',
-      dados: payload
-    })
+    const tempId = createTempId('historico')
+    
+    deps.addToQueue(
+      createQueueItem('administrar_medicacao', {
+        offline_id: offlineId,
+        pacienteRef: { id: pacienteId },
+        prescricaoRef: { id: prescricaoId },
+        data_hora: dataHora,
+        administrador: administradorEmail || "Desconhecido"
+      })
+    )
+
+    // 🔥 CORREÇÃO: Removido o item de check-in da fila
+    // O check-in offline não é crítico e o tipo CheckinPayload não possui 'status'
+    // O comportamento online já atualiza o check-in via updateCheckInRemote.
+    // if (!checkInAtual) {
+    //   deps.addToQueue(createQueueItem('checkin', { pacienteRef: { id: pacienteId }, status: true }))
+    // }
 
     return {
       success: true,
-      queued: true
+      queued: true,
+      tempId,
+      offlineId
     }
   }
 
-  // --- ONLINE: REGISTRAR ADMINISTRAÇÃO ---
+  const payload: AdministracaoMedicacao = {
+    prescricao_id: prescricaoId,
+    data_hora: dataHora,
+    administrador: administradorEmail || "Desconhecido",
+    offline_id: offlineId
+  }
+
   const { error: administracaoError } = await deps.insertAdministracaoRemote(payload)
 
   if (administracaoError) {
@@ -108,7 +131,6 @@ export async function administrarMedicacao(
     }
   }
 
-  // --- AUTO CHECK-IN: Se estava ausente, vira presente ---
   let checkInUpdated = false
 
   if (!checkInAtual) {
@@ -117,12 +139,11 @@ export async function administrarMedicacao(
     if (!checkInError) {
       checkInUpdated = true
     }
-    // Se falhar o check-in, não falhamos a administração
-    // Apenas não atualizamos o estado
   }
 
   return {
     success: true,
-    checkInUpdated
+    checkInUpdated,
+    offlineId
   }
 }

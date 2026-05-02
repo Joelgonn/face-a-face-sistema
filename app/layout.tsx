@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { ServiceWorkerRegister } from "@/app/components/ServiceWorkerRegister";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -54,46 +55,22 @@ export default function RootLayout({
       >
         {children}
         
+        {/* 🔥 FIX 3: Apenas o ServiceWorkerRegister - sem script manual duplicado */}
+        <ServiceWorkerRegister />
+        
+        {/* 🔥 Script mínimo apenas para logs e PWA detection (não registra SW) */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
                 const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-                if (isLocalDev) {
-                  navigator.serviceWorker.getRegistrations()
-                    .then(registrations => registrations.forEach(reg => reg.unregister()));
-
-                  if ('caches' in window) {
-                    caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
-                  }
-                } else {
                 const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+                
                 console.log('[PWA] Modo:', isPWA ? 'instalado' : 'navegador');
+                console.log('[PWA] Ambiente:', isLocalDev ? 'desenvolvimento' : 'producao');
                 
                 window.addEventListener('online', () => console.log('[PWA] Conexão restaurada'));
-                
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js')
-                    .then(reg => {
-                      console.log('[PWA] SW registrado');
-                      reg.addEventListener('updatefound', () => {
-                        const newWorker = reg.installing;
-                        newWorker.addEventListener('statechange', () => {
-                          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('[PWA] Nova versão disponível');
-                          }
-                        });
-                      });
-                    })
-                    .catch(err => console.error('[PWA] Erro:', err));
-                    
-                  navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    console.log('[PWA] SW atualizado, recarregando...');
-                    window.location.reload();
-                  });
-                });
-                }
+                window.addEventListener('offline', () => console.log('[PWA] Conexão perdida'));
               }
             `,
           }}

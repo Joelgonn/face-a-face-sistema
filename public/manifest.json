@@ -2,11 +2,15 @@
   "name": "Face a Face - Igreja Batista Apascentar",
   "short_name": "Face a Face",
   "description": "Sistema de controle de medicação e check-in para eventos",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#F8FAFC",
   "theme_color": "#ea580c",
   "orientation": "portrait",
+  "scope": "/",
+  "id": "/",
+  "lang": "pt-BR",
+  "categories": ["medical", "health", "productivity"],
   "icons": [
     {
       "src": "/icons/icon-72.png",
@@ -55,6 +59,32 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "url": "/dashboard",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Encontristas",
+      "short_name": "Lista",
+      "url": "/dashboard/encontristas",
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }

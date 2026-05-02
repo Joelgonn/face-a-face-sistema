@@ -1,4 +1,7 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
+
+import withPWA from 'next-pwa';
+
 const nextConfig = {
   // Permite servir arquivos estáticos da pasta public com headers corretos
   async headers() {
@@ -51,7 +54,7 @@ const nextConfig = {
         ],
       },
       {
-        source: '/offline.html',
+        source: '/offline',
         headers: [
           {
             key: 'Cache-Control',
@@ -61,15 +64,12 @@ const nextConfig = {
       },
     ];
   },
-  // Compressão para melhor performance
   compress: true,
-  // Desativa o x-powered-by por segurança
   poweredByHeader: false,
-  // Geração de imagens next/image otimizada
   images: {
     formats: ['image/avif', 'image/webp'],
+    unoptimized: process.env.NODE_ENV === 'development',
   },
-  // Webpack config para suporte a PWA
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -83,4 +83,101 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// 🔥 CONFIGURAÇÃO CORRIGIDA DO PWA
+const pwaConfig = withPWA({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+  
+  runtimeCaching: [
+    {
+      // Rotas dinâmicas de paciente
+      urlPattern: ({ url }) => url.pathname.startsWith('/dashboard/encontrista/'),
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'dashboard-patient-pages',
+        networkTimeoutSeconds: 3,
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 7 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      // Demais páginas do dashboard
+      urlPattern: ({ url }) => url.pathname.startsWith('/dashboard'),
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'dashboard-pages',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 7 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      // Cache para navegação geral
+      urlPattern: ({ request }) => request.mode === 'navigate',
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'pages-cache',
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 7 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      // Cache para dados estáticos
+      urlPattern: /\.(?:css|js|mjs|json)$/,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'static-resources',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      // Cache para imagens
+      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'image-cache',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      // Cache para API
+      urlPattern: /^\/api\/.*$/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'api-cache',
+        networkTimeoutSeconds: 3,
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 1 * 24 * 60 * 60,
+        },
+      },
+    },
+  ],
+  
+  // 🔥 Pré-cache das rotas estáticas
+  additionalManifestEntries: [
+    { url: '/', revision: Date.now().toString() },
+    { url: '/dashboard', revision: Date.now().toString() },
+    { url: '/dashboard/encontristas', revision: Date.now().toString() },
+    { url: '/offline', revision: Date.now().toString() },
+  ],
+  
+  fallbacks: {
+    document: '/offline',
+  },
+});
+
+export default pwaConfig(nextConfig);

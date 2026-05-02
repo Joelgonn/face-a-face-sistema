@@ -1,5 +1,7 @@
 // /application/use-cases/atualizarPaciente.ts
 
+import { createQueueItem, type QueueItem } from '@/domain/offline/queue.types'
+
 // --- TIPAGEM ---
 export type DadosAtualizadosPaciente = {
   nome: string
@@ -16,7 +18,7 @@ export type AtualizarPacienteParams = {
 
 export type AtualizarPacienteDeps = {
   updateRemote: (id: number, data: DadosAtualizadosPaciente) => Promise<{ error?: unknown }>
-  addToQueue: (item: unknown) => void
+  addToQueue: (item: QueueItem) => void
 }
 
 export type AtualizarPacienteResult = {
@@ -57,11 +59,12 @@ export async function atualizarPaciente(
 
   // --- OFFLINE ---
   if (!isOnline) {
-    deps.addToQueue({
-      tipo: 'atualizar_paciente',
-      id: pacienteId,
-      dados: payload
-    })
+    deps.addToQueue(
+      createQueueItem('atualizar_paciente', {
+        pacienteRef: { id: pacienteId },
+        ...payload
+      })
+    )
 
     return {
       success: true,
