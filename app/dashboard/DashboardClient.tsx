@@ -813,7 +813,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   // RENDER (JSX completo - inalterado)
   // ============================================================
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24 overflow-x-hidden">
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-4 md:px-8">
         <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
@@ -883,7 +883,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+      <main className="w-full max-w-6xl mx-auto px-4 md:px-8 space-y-6 overflow-x-hidden">
         {!modoSimples && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
             <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
