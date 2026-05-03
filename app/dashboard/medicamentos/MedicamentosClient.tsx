@@ -56,7 +56,7 @@ function SkeletonCard() {
   );
 }
 
-// --- SWIPEABLE CARD (COM BARRA LATERAL LARANJA RESTAURADA + SEPARAÇÃO MELHORADA) ---
+// --- SWIPEABLE CARD (DRAG INTELIGENTE: SÓ ATIVA COM GESTO HORIZONTAL) ---
 const SWIPE_THRESHOLD = -60;
 
 function SwipeableCard({ 
@@ -69,6 +69,7 @@ function SwipeableCard({
   onDelete: () => void;
 }) {
   const x = useMotionValue(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Fundo do card muda gradualmente de branco para vermelho suave
   const bg = useTransform(
@@ -119,10 +120,16 @@ function SwipeableCard({
 
       {/* CARD PRINCIPAL */}
       <motion.div
-        style={{ x, background: bg }}
-        drag="x"
+        style={{ x, background: bg, touchAction: 'pan-y' }}
+        drag={isDragging ? "x" : false}
         dragConstraints={{ left: -100, right: 0 }}
         dragElastic={0.08}
+        onPanStart={(_, info) => {
+          // Ativa o drag somente se o movimento inicial for mais horizontal que vertical
+          const isHorizontal = Math.abs(info.delta.x) > Math.abs(info.delta.y);
+          if (isHorizontal) setIsDragging(true);
+        }}
+        onPanEnd={() => setIsDragging(false)}
         onDragEnd={(_, info) => {
           if (info.offset.x < SWIPE_THRESHOLD) {
             x.stop();
@@ -315,7 +322,7 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
         </div>
       </div>
 
-      <main className="w-full max-w-6xl mx-auto px-3 md:px-8 space-y-6 overflow-x-hidden scroll-smooth overscroll-y-contain">
+      <main className="w-full max-w-6xl mx-auto px-3 md:px-8 space-y-6 overflow-x-hidden scroll-smooth">
         
         {/* STATS RÁPIDO (COMPACTO NO MOBILE) */}
         <div className="flex flex-col md:grid md:grid-cols-3 gap-3">
@@ -352,7 +359,7 @@ export default function MedicamentosClient({ initialMedicamentos }: Medicamentos
             </motion.div>
         </div>
 
-        {/* LISTA MOBILE - CARDS COM SWIPE (SEPARAÇÃO VISUAL REFORÇADA) */}
+        {/* LISTA MOBILE - CARDS COM SWIPE (DRAG INTELIGENTE) */}
         <div className="md:hidden space-y-3">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
