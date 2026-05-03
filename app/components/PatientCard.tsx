@@ -1,6 +1,6 @@
 'use client'
 
-import { motion, useMotionValue, useTransform, Transition } from 'framer-motion'
+import { motion, Transition } from 'framer-motion'
 import { 
   AlertCircle,
   UserCheck, 
@@ -47,16 +47,6 @@ export function PatientCard({
 }: PatientCardProps) {
 
   const isFlashing = flashId === id
-  const x = useMotionValue(0)
-  
-  const bgColor = useTransform(
-    x,[0, 100],['rgba(255,255,255,1)', 'rgba(16,185,129,0.15)']
-  )
-
-  const handleSwipeComplete = () => {
-    onCheckIn(id, checkIn, nome)
-    x.set(0)
-  }
 
   // --- LÓGICA DE CORES CUSTOMIZADAS (Ajuste Fino de UX) ---
   const statusTextoLp = status?.texto?.toLowerCase() || ''
@@ -98,24 +88,13 @@ export function PatientCard({
   return (
     <motion.div
       layoutId={`card-${id}`}
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.2}
-      dragSnapToOrigin
-      style={{ x, backgroundColor: bgColor, transformOrigin: 'left center' }}
-      onDragEnd={(_e, info) => {
-        if (info.offset.x > 100) {
-          handleSwipeComplete()
-        }
-      }}
-      whileDrag={{ scale: 0.98 }}
-      transition={springTransition}
       whileTap={{ scale: 0.96 }}
+      transition={springTransition}
       className={`
         relative rounded-2xl 
         border-l-8 ${leftBorderClass}
         border-y border-r border-slate-200
-        bg-white/90 backdrop-blur-sm
+        bg-white
         shadow-sm hover:shadow-md 
         transition-shadow duration-200
         overflow-hidden
