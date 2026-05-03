@@ -456,7 +456,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </header>
 
-          <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
+          <main className="flex-1 p-4 md:p-6 overflow-x-hidden touch-pan-y">
             {readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
                 <Lock size={14} /><span className="flex-1"><strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.</span>

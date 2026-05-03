@@ -1,6 +1,6 @@
 'use client'
 
-import { motion, Transition } from 'framer-motion'
+import { motion, useMotionValue, Transition } from 'framer-motion'
 import { 
   AlertCircle,
   UserCheck, 
@@ -47,6 +47,7 @@ export function PatientCard({
 }: PatientCardProps) {
 
   const isFlashing = flashId === id
+  const x = useMotionValue(0) // controle do arrasto horizontal
 
   // --- LÓGICA DE CORES CUSTOMIZADAS (Ajuste Fino de UX) ---
   const statusTextoLp = status?.texto?.toLowerCase() || ''
@@ -85,9 +86,25 @@ export function PatientCard({
 
   const customPillColor = `${pillBgClass} ${pillTextClass} ${pillBorderClass} border`
 
+  const handleSwipeComplete = () => {
+    onCheckIn(id, checkIn, nome)
+    x.set(0) // retorna o card à posição original após o swipe
+  }
+
   return (
     <motion.div
       layoutId={`card-${id}`}
+      style={{ x }}
+      drag="x"
+      dragConstraints={{ left: -120, right: 0 }}
+      dragElastic={0.2}
+      onDragEnd={(_e, info) => {
+        if (info.offset.x > 100) {
+          handleSwipeComplete()
+        } else {
+          x.set(0) // se não atingiu o limiar, volta suavemente
+        }
+      }}
       whileTap={{ scale: 0.96 }}
       transition={springTransition}
       className={`
@@ -99,6 +116,7 @@ export function PatientCard({
         transition-shadow duration-200
         overflow-hidden
         cursor-pointer
+        touch-pan-x
         ${isFlashing ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}
       `}
       onClick={onClick}
