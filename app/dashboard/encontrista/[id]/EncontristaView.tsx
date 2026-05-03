@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Clock, CheckCircle2, Pencil, X, 
   Trash2, Loader2, CalendarClock, ThumbsUp, Check, Plus, WifiOff
 } from 'lucide-react'
+import { FixedSizeList } from 'react-window'
 
 // 🔥 IMPORTANDO TIPOS DO CONTAINER (ÚNICA FONTE DA VERDADE)
 import type { Prescricao, HistoricoItem, PrescricaoComOffline, ListaVirtualItem } from './EncontristaContainer'
@@ -172,7 +173,7 @@ export function EncontristaView({
   historico,
   gruposMedicacoes,
   statusMap,
-  listaVirtualizada, // 🔥 NOVA PROP
+  listaVirtualizada,
   loading,
   saving,
   infoExpanded,
@@ -338,6 +339,47 @@ export function EncontristaView({
     )
   }
 
+  // 🔥 Constantes para virtualização
+  const ITEM_HEIGHT = 140 // ajuste fino para compensar mb-3 e garantir altura consistente
+  const LIST_HEIGHT = typeof window !== 'undefined' ? window.innerHeight - 320 : 500
+
+  // 🔥 Componente de linha para a lista virtualizada
+  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const item = listaVirtualizada[index]
+
+    if (item.type === 'header') {
+      const labels = {
+        atrasado: { text: '🔴 Atrasados', color: 'text-red-600', bg: 'bg-red-100 text-red-700' },
+        atencao: { text: '🟡 Atenção', color: 'text-amber-600', bg: 'bg-amber-100 text-amber-700' },
+        emdia: { text: '🟢 Em dia', color: 'text-emerald-600', bg: 'bg-emerald-100 text-emerald-700' },
+        sem_dados: { text: '⚪ Sem dados', color: 'text-slate-500', bg: 'bg-slate-100 text-slate-600' }
+      }
+
+      const grupo = item.grupo
+      const count = gruposMedicacoes[grupo].length
+      const label = labels[grupo]
+
+      return (
+        <div style={style} className="flex items-center px-2">
+          <div className="mt-4 mb-2 flex items-center gap-2">
+            <span className={`text-sm font-bold ${label.color}`}>
+              {label.text}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${label.bg}`}>
+              {count}
+            </span>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div style={style}>
+        {renderMedicacao(item.med, item.grupo)}
+      </div>
+    )
+  }
+
   // 🔥 ESTRUTURA PRINCIPAL - COM DIV RAIZ ÚNICA
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -458,8 +500,8 @@ export function EncontristaView({
           </AnimatePresence>
         </div>
 
-        {/* MEDICAÇÕES COM LISTA VIRTUALIZADA */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+        {/* MEDICAÇÕES COM VIRTUALIZAÇÃO */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 overflow-hidden">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-slate-800 flex items-center gap-2">
               <Pill className="text-orange-500" size={20} />
@@ -483,35 +525,15 @@ export function EncontristaView({
           {medicacoes.length === 0 ? (
             <p className="text-slate-400 text-sm italic text-center py-8">Nenhuma medicação cadastrada.</p>
           ) : (
-            <div className="space-y-2 mt-2">
-              {listaVirtualizada.map((item, index) => {
-                if (item.type === 'header') {
-                  const labels = {
-                    atrasado: { text: '🔴 Atrasados', color: 'text-red-600', bg: 'bg-red-100 text-red-700' },
-                    atencao: { text: '🟡 Atenção', color: 'text-amber-600', bg: 'bg-amber-100 text-amber-700' },
-                    emdia: { text: '🟢 Em dia', color: 'text-emerald-600', bg: 'bg-emerald-100 text-emerald-700' },
-                    sem_dados: { text: '⚪ Sem dados', color: 'text-slate-500', bg: 'bg-slate-100 text-slate-600' }
-                  }
-
-                  const grupo = item.grupo
-                  const count = gruposMedicacoes[grupo].length
-                  const label = labels[grupo]
-
-                  return (
-                    <div key={`header-${grupo}-${index}`} className="mt-4 mb-2 flex items-center gap-2">
-                      <span className={`text-sm font-bold ${label.color}`}>
-                        {label.text}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${label.bg}`}>
-                        {count}
-                      </span>
-                    </div>
-                  )
-                }
-
-                return renderMedicacao(item.med, item.grupo)
-              })}
-            </div>
+            <FixedSizeList
+              height={LIST_HEIGHT}
+              width="100%"
+              itemCount={listaVirtualizada.length}
+              itemSize={ITEM_HEIGHT}
+              overscanCount={5}
+            >
+              {Row}
+            </FixedSizeList>
           )}
         </div>
 
