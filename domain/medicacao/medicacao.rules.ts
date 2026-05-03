@@ -34,10 +34,20 @@ export type HistoricoItem = {
   prescricao_id: number
 }
 
+// 🔥 NOVO: tipo estruturado para status de medicação
+export type StatusMedicacaoTipo = 'atrasado' | 'atencao' | 'emdia' | 'sem_dados'
+
+// 🔥 NOVO: StatusMedicacao agora inclui 'tipo' para ordenação
 export type StatusMedicacao = {
   texto: string
   cor: string
   bg: string
+  tipo: StatusMedicacaoTipo
+}
+
+// 🔥 UTILITY: exhaustiveness checking para switches
+export function assertNeverStatus(value: never): never {
+  throw new Error(`Unhandled status type: ${value}`)
 }
 
 // --- FUNÇÃO PURA (REGRA DE NEGÓCIO) PARA STATUS DO PACIENTE ---
@@ -120,19 +130,25 @@ export function calcularStatusPessoa(pessoa: PessoaComPrescricao): StatusPessoa 
 }
 
 // --- FUNÇÃO PURA (REGRA DE NEGÓCIO) PARA STATUS DE MEDICAÇÃO INDIVIDUAL ---
+// 🔥 CORRIGIDA: usa .filter().sort()[0] ao invés de .find()
 export function calcularStatusMedicacao(
   med: PrescricaoComHistorico,
   historico: HistoricoItem[]
 ): StatusMedicacao {
-  // Busca o último registro de administração para esta medicação
-  const ultimoRegistro = historico.find(h => h.prescricao_id === med.id)
+  // 🔥 CORREÇÃO: pega o registro MAIS RECENTE, não o primeiro que encontrar
+  const ultimoRegistro = historico
+    .filter(h => h.prescricao_id === med.id && h.data_hora !== null && h.data_hora !== undefined)
+    .sort((a, b) => 
+      new Date(b.data_hora!).getTime() - new Date(a.data_hora!).getTime()
+    )[0]
 
   // Caso 1: Dados incompletos
   if (!med.horario_inicial || !med.posologia) {
     return { 
       texto: 'Dados incompletos', 
       cor: 'text-slate-400', 
-      bg: 'bg-slate-50' 
+      bg: 'bg-slate-50',
+      tipo: 'sem_dados'
     }
   }
 
@@ -141,7 +157,8 @@ export function calcularStatusMedicacao(
     return { 
       texto: `Início: ${med.horario_inicial}`, 
       cor: 'text-slate-500', 
-      bg: 'bg-slate-50' 
+      bg: 'bg-slate-50',
+      tipo: 'sem_dados'
     }
   }
 
@@ -151,7 +168,8 @@ export function calcularStatusMedicacao(
     return { 
       texto: 'Posologia complexa', 
       cor: 'text-blue-600', 
-      bg: 'bg-blue-50' 
+      bg: 'bg-blue-50',
+      tipo: 'sem_dados'
     }
   }
 
@@ -177,17 +195,19 @@ export function calcularStatusMedicacao(
     return { 
       texto: `ATRASADO (${horaFormatada})`, 
       cor: 'text-red-600 font-bold', 
-      bg: 'bg-red-50' 
+      bg: 'bg-red-50',
+      tipo: 'atrasado'
     }
   }
 
-  // Caso 4: Próximo (dentro de 30 minutos)
+  // Caso 4: Atenção (dentro de 30 minutos)
   const diffMinutos = (dataProxima.getTime() - agora.getTime()) / 1000 / 60
   if (diffMinutos < 30) {
     return { 
       texto: `Próxima: ${horaFormatada} ${diaFormatado}`, 
       cor: 'text-amber-600 font-bold', 
-      bg: 'bg-amber-50' 
+      bg: 'bg-amber-50',
+      tipo: 'atencao'
     }
   }
 
@@ -195,6 +215,7 @@ export function calcularStatusMedicacao(
   return { 
     texto: `Próxima: ${horaFormatada} ${diaFormatado}`, 
     cor: 'text-emerald-600 font-bold', 
-    bg: 'bg-emerald-50' 
+    bg: 'bg-emerald-50',
+    tipo: 'emdia'
   }
 }

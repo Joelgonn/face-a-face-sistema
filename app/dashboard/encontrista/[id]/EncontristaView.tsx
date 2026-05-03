@@ -8,9 +8,9 @@ import {
 } from 'lucide-react'
 
 // 🔥 IMPORTANDO TIPOS DO CONTAINER (ÚNICA FONTE DA VERDADE)
-import type { Prescricao, HistoricoItem } from './EncontristaContainer'
+import type { Prescricao, HistoricoItem, PrescricaoComOffline, ListaVirtualItem } from './EncontristaContainer'
 
-// --- TIPAGEM (apenas o que não vem do Container) ---
+// --- TIPAGEM LOCAL (apenas o que não vem do Container) ---
 type PacienteCompleto = {
   id: number
   nome: string | null
@@ -25,10 +25,11 @@ type MedicamentoBaseRow = {
   nome: string | null
 }
 
-type StatusMedicacao = {
+type StatusMedicacaoCalculado = {
   texto: string
   cor: string
   bg: string
+  tipo: 'atrasado' | 'atencao' | 'emdia' | 'sem_dados'
 }
 
 type AllergyWarning = {
@@ -37,11 +38,22 @@ type AllergyWarning = {
   onConfirm: () => void
 } | null
 
+type GruposMedicacoes = {
+  atrasado: Prescricao[]
+  atencao: Prescricao[]
+  emdia: Prescricao[]
+  sem_dados: Prescricao[]
+}
+
 type Props = {
   // --- DADOS ---
   paciente: PacienteCompleto
   medicacoes: Prescricao[]
   historico: HistoricoItem[]
+  gruposMedicacoes: GruposMedicacoes
+  statusMap: Map<number, StatusMedicacaoCalculado>
+  // 🔥 NOVA PROP: lista linear para virtualização
+  listaVirtualizada: ListaVirtualItem[]
   loading: boolean
   saving: boolean
   infoExpanded: boolean
@@ -104,8 +116,7 @@ type Props = {
   onOpenEditModal: () => void
   onGoBack: () => void
 
-  // --- FUNÇÕES AUXILIARES ---
-  getStatus: (med: Prescricao, historico: HistoricoItem[]) => StatusMedicacao
+  // --- FUNÇÕES AUXILIARES (mantidas apenas as não relacionadas a status) ---
   onNomeChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onSelectMedicamento: (nome: string) => void
   onHorarioChange: (e: React.ChangeEvent<HTMLInputElement>) => void
@@ -129,10 +140,39 @@ const formatarNomeEnfermeiro = (email: string | null) => {
   return nomeLimpo.replace(/\b\w/g, l => l.toUpperCase()).trim()
 }
 
+// 🔥 FUNÇÃO DE BADGE DINÂMICO
+function getBadgeStatus(tipo: 'atrasado' | 'atencao' | 'emdia' | 'sem_dados') {
+  switch (tipo) {
+    case 'atrasado':
+      return {
+        label: 'Atrasado',
+        className: 'bg-red-100 text-red-700 border-red-200'
+      }
+    case 'atencao':
+      return {
+        label: 'Atenção',
+        className: 'bg-amber-100 text-amber-700 border-amber-200'
+      }
+    case 'emdia':
+      return {
+        label: 'Em dia',
+        className: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      }
+    case 'sem_dados':
+      return {
+        label: 'Sem dados',
+        className: 'bg-slate-100 text-slate-600 border-slate-200'
+      }
+  }
+}
+
 export function EncontristaView({
   paciente,
   medicacoes,
   historico,
+  gruposMedicacoes,
+  statusMap,
+  listaVirtualizada, // 🔥 NOVA PROP
   loading,
   saving,
   infoExpanded,
@@ -182,7 +222,6 @@ export function EncontristaView({
   onUpdatePessoa,
   onOpenEditModal,
   onGoBack,
-  getStatus,
   onNomeChange,
   onSelectMedicamento,
   onHorarioChange,
@@ -210,6 +249,90 @@ export function EncontristaView({
           >
             Voltar ao Dashboard
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  // 🔥 RENDERIZAÇÃO DE UM CARD DE MEDICAÇÃO (Reutilizável)
+  const renderMedicacao = (med: Prescricao, tipo: 'atrasado' | 'atencao' | 'emdia' | 'sem_dados') => {
+    const statusBase = statusMap.get(med.id)
+    const medOffline = med as PrescricaoComOffline
+
+    let statusTexto: string
+    let statusCor: string
+    if (medOffline.isOfflineUpdate) {
+      statusTexto = '✅ Administrado (pendente sync)'
+      statusCor = 'text-green-600'
+    } else if (medOffline._offline) {
+      statusTexto = '⏳ Pendente (offline)'
+      statusCor = 'text-yellow-600'
+    } else {
+      statusTexto = statusBase?.texto || ''
+      statusCor = statusBase?.cor || ''
+    }
+
+    const badge = getBadgeStatus(tipo)
+    
+    const highlightClass = {
+      atrasado: 'border-l-4 border-l-red-500 bg-red-50 shadow-sm border-t border-r border-b border-red-100',
+      atencao: 'border-l-4 border-l-amber-500 bg-amber-50 shadow-sm border-t border-r border-b border-amber-100',
+      emdia: 'border-l-4 border-l-emerald-500 bg-emerald-50 shadow-sm border-t border-r border-b border-emerald-100',
+      sem_dados: 'border border-slate-200 bg-white shadow-sm'
+    }[tipo]
+
+    const isCritical = tipo === 'atrasado' || tipo === 'atencao'
+    const isAdministrado = tipo === 'emdia'
+
+    const uniqueKey = (med as PrescricaoComOffline)._tempId || med.id
+
+    return (
+      <div key={uniqueKey} className={`p-4 rounded-xl transition-all mb-3 ${highlightClass}`}>
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <h3 className="font-bold text-slate-800">{med.nome_medicamento}</h3>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded-full border border-slate-100">{med.dosagem}</span>
+              <span className="text-xs text-slate-500">{med.posologia}</span>
+              <span className="text-xs text-slate-400">Início: {med.horario_inicial}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={`text-xs font-bold border px-2 py-0.5 rounded-md ${badge.className}`}>
+                {badge.label}
+              </span>
+              <span className={`text-xs font-bold ${statusCor}`}>{statusTexto}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 ml-2">
+            <button
+              onClick={() => onAdministrar(med)}
+              disabled={saving || isAdministrado}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 ${
+                saving || isAdministrado
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : isCritical 
+                    ? 'bg-red-500 text-white hover:bg-red-600 shadow-sm' 
+                    : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'
+              }`}
+              title={isAdministrado ? 'Já administrado hoje' : 'Administrar'}
+            >
+              {isCritical ? <AlertTriangle size={12} className="inline mr-1" /> : <CheckCircle2 size={12} className="inline mr-1" />}
+              <span className="hidden sm:inline">Administrar</span>
+              <span className="inline sm:hidden">Ok</span>
+            </button>
+            <button
+              onClick={() => onDeleteMedicacao(med.id)}
+              disabled={saving}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                saving
+                  ? 'text-slate-300 cursor-not-allowed'
+                  : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+              }`}
+              title="Excluir medicação"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -335,7 +458,7 @@ export function EncontristaView({
           </AnimatePresence>
         </div>
 
-        {/* MEDICAÇÕES */}
+        {/* MEDICAÇÕES COM LISTA VIRTUALIZADA */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-bold text-slate-800 flex items-center gap-2">
@@ -360,62 +483,33 @@ export function EncontristaView({
           {medicacoes.length === 0 ? (
             <p className="text-slate-400 text-sm italic text-center py-8">Nenhuma medicação cadastrada.</p>
           ) : (
-            <div className="space-y-3">
-              {medicacoes.map((med) => {
-                const status = getStatus(med, historico)
-                const isCritical = status.bg.includes('red') || status.bg.includes('amber')
-                // 🔥 Verifica se já foi administrado para desabilitar o botão
-                const isAdministrado = status.texto.includes('Administrado') || status.texto.includes('pendente sync')
-                
-                return (
-                  <div
-                    key={med.id}
-                    className={`p-4 rounded-xl border transition-all ${status.bg} ${isCritical ? 'ring-1 ring-red-200' : ''}`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-slate-800">{med.nome_medicamento}</h3>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className="text-xs text-slate-500 bg-white/50 px-2 py-0.5 rounded-full">{med.dosagem}</span>
-                          <span className="text-xs text-slate-500">{med.posologia}</span>
-                          <span className="text-xs text-slate-400">Início: {med.horario_inicial}</span>
-                        </div>
-                        <div className="mt-2">
-                          <span className={`text-xs font-bold ${status.cor}`}>{status.texto}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onAdministrar(med)}
-                          disabled={saving || isAdministrado}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 ${
-                            saving || isAdministrado
-                              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                              : isCritical 
-                                ? 'bg-red-500 text-white hover:bg-red-600' 
-                                : 'bg-emerald-500 text-white hover:bg-emerald-600'
-                          }`}
-                          title={isAdministrado ? 'Já administrado hoje' : 'Administrar'}
-                        >
-                          {isCritical ? <AlertTriangle size={12} className="inline mr-1" /> : <CheckCircle2 size={12} className="inline mr-1" />}
-                          Administrar
-                        </button>
-                        <button
-                          onClick={() => onDeleteMedicacao(med.id)}
-                          disabled={saving}
-                          className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
-                            saving
-                              ? 'text-slate-300 cursor-not-allowed'
-                              : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
-                          }`}
-                          title="Excluir medicação"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+            <div className="space-y-2 mt-2">
+              {listaVirtualizada.map((item, index) => {
+                if (item.type === 'header') {
+                  const labels = {
+                    atrasado: { text: '🔴 Atrasados', color: 'text-red-600', bg: 'bg-red-100 text-red-700' },
+                    atencao: { text: '🟡 Atenção', color: 'text-amber-600', bg: 'bg-amber-100 text-amber-700' },
+                    emdia: { text: '🟢 Em dia', color: 'text-emerald-600', bg: 'bg-emerald-100 text-emerald-700' },
+                    sem_dados: { text: '⚪ Sem dados', color: 'text-slate-500', bg: 'bg-slate-100 text-slate-600' }
+                  }
+
+                  const grupo = item.grupo
+                  const count = gruposMedicacoes[grupo].length
+                  const label = labels[grupo]
+
+                  return (
+                    <div key={`header-${grupo}-${index}`} className="mt-4 mb-2 flex items-center gap-2">
+                      <span className={`text-sm font-bold ${label.color}`}>
+                        {label.text}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${label.bg}`}>
+                        {count}
+                      </span>
                     </div>
-                  </div>
-                )
+                  )
+                }
+
+                return renderMedicacao(item.med, item.grupo)
               })}
             </div>
           )}

@@ -13,6 +13,7 @@ export type AdministracaoMedicacao = {
 
 export type AdministrarMedicacaoParams = {
   prescricaoId: number
+  prescricaoTempId?: string
   pacienteId: number
   nomeMedicamento: string
   alergiasPaciente: string | null
@@ -48,6 +49,7 @@ export async function administrarMedicacao(
 
   const {
     prescricaoId,
+    prescricaoTempId,
     pacienteId,
     nomeMedicamento,
     alergiasPaciente,
@@ -90,22 +92,20 @@ export async function administrarMedicacao(
   if (!isOnline) {
     const tempId = createTempId('historico')
     
+    // 🔥 CORREÇÃO: usa tempId se disponível, senão fallback para id
+    const prescricaoRef = prescricaoTempId
+      ? { tempId: prescricaoTempId }
+      : { id: prescricaoId }
+    
     deps.addToQueue(
       createQueueItem('administrar_medicacao', {
         offline_id: offlineId,
         pacienteRef: { id: pacienteId },
-        prescricaoRef: { id: prescricaoId },
+        prescricaoRef,
         data_hora: dataHora,
         administrador: administradorEmail || "Desconhecido"
       })
     )
-
-    // 🔥 CORREÇÃO: Removido o item de check-in da fila
-    // O check-in offline não é crítico e o tipo CheckinPayload não possui 'status'
-    // O comportamento online já atualiza o check-in via updateCheckInRemote.
-    // if (!checkInAtual) {
-    //   deps.addToQueue(createQueueItem('checkin', { pacienteRef: { id: pacienteId }, status: true }))
-    // }
 
     return {
       success: true,
@@ -125,9 +125,11 @@ export async function administrarMedicacao(
   const { error: administracaoError } = await deps.insertAdministracaoRemote(payload)
 
   if (administracaoError) {
+    console.error('🔥 ERRO REAL SUPABASE:', administracaoError)
+
     return {
       success: false,
-      error: 'Erro ao registrar administração'
+      error: JSON.stringify(administracaoError)
     }
   }
 
