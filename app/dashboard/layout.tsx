@@ -395,7 +395,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <DashboardActionsProvider>
-      <div className="min-h-screen bg-gray-50 flex">
+      <div className="min-h-screen bg-gray-50 flex overflow-x-hidden">
         <PrefetchLinks />
         <OfflineNavigationGuard />
 
@@ -427,7 +427,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClick={() => setSidebarOpen(false)}
         />
 
-        <div className="flex-1 flex flex-col min-h-screen">
+        <div className="flex-1 flex flex-col min-h-screen w-full overflow-x-hidden">
           <header className="bg-white border-b border-gray-200 sticky top-0 z-30 md:hidden">
             <div className="flex items-center justify-between px-4 py-3">
               <button
@@ -456,7 +456,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </header>
 
-          <main className="flex-1 p-4 md:p-6">
+          <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
             {readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
                 <Lock size={14} /><span className="flex-1"><strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.</span>
