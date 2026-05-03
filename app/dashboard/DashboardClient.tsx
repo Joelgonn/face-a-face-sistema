@@ -850,7 +850,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
               </motion.button>
               <AnimatePresence>
                 {openMenu && (
-                  <motion.div initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={fastTransition} className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50">
+                  <motion.div initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} transition={fastTransition} className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-300 p-2 z-50">
                     <motion.button whileTap={{ scale: 0.97 }} transition={fastTransition} onClick={() => { reloadData(); setOpenMenu(false); }} className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 transition-all text-base font-semibold text-slate-700 flex items-center gap-3">
                       <RefreshCw size={18} className="text-slate-500" /> Recarregar Dados
                     </motion.button>
@@ -885,7 +885,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
 
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
         {!modoSimples && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
             <button onClick={() => setShowStats(!showStats)} className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
               <div className="flex items-center gap-3"><Activity className="text-orange-500 w-5 h-5" /><span className="font-bold text-slate-700">Visão Geral</span></div>
               <div className="flex items-center gap-4">
@@ -909,7 +909,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
 
         {modoSimples && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={fastTransition} className="px-0 mt-0">
-            <div className="flex items-center justify-between bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
+            <div className="flex items-center justify-between bg-white border border-slate-300 shadow-sm rounded-2xl px-4 py-3">
               <div className="flex items-center gap-4 text-[11px] font-black tracking-wide">
                 <motion.span key={totalEncontristas} initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="text-slate-600">👥 {totalEncontristas}</motion.span>
                 <motion.span key={totalPresentes} initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="text-emerald-600">✅ {totalPresentes}</motion.span>
@@ -943,7 +943,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
                   {loading ? (
                     <div className="text-center py-12 text-slate-400"><Loader2 className="w-10 h-10 animate-spin mx-auto mb-3"/><span className="font-medium">Carregando...</span></div>
                   ) : sorted.length === 0 ? (
-                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={fastTransition} className="text-center py-16 bg-white rounded-2xl border border-slate-100">
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={fastTransition} className="text-center py-16 bg-white rounded-2xl border border-slate-300">
                       <Search size={48} className="text-slate-300 mx-auto mb-3" />
                       <p className="text-slate-400 font-bold">Nenhum paciente encontrado.</p>
                       {isAdmin && <button onClick={() => setIsModalOpen(true)} className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold">+ Adicionar primeiro paciente</button>}
@@ -970,9 +970,9 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
               <div className="col-span-2">Status</div><div className="col-span-4 pl-2">Paciente</div><div className="col-span-2 text-center">Check-in</div><div className="col-span-2">Responsável</div><div className="col-span-2">Alergias</div>
             </div>
             {loading ? (
-              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando lista...</div>
+              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-300 shadow-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando lista...</div>
             ) : sorted.length === 0 ? (
-              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-100 shadow-sm">Nenhum resultado encontrado.</div>
+              <div className="bg-white rounded-2xl p-16 text-center text-slate-400 font-bold border border-slate-300 shadow-sm">Nenhum resultado encontrado.</div>
             ) : (
               <AnimatePresence><div className="space-y-2">{sorted.map((pessoa, index) => {
                 const status = statusMap.get(pessoa.id);
