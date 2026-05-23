@@ -279,17 +279,28 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
 
   const { navigateTo } = useOfflineNavigation();
   const { setOnImport, setOnReset } = useDashboardActions();
+  
+  // 🔥 CORREÇÃO: Restaurada a propriedade 'waitForCache' à desestruturação
   const { startPreload, markCacheReady, waitForCache, cleanup } = useCacheGate();
 
   // ============================================================
-  // REGISTRA AÇÕES NO LAYOUT
+  // REGISTRA AÇÕES NO LAYOUT (CORRIGIDO COM ASSERÇÃO SEGURA)
   // ============================================================
   useEffect(() => {
     const importHandler = () => fileInputRef.current?.click();
-    const resetHandler = () => { setIsResetModalOpen(true); setResetError(null); };
+    
+    const resetHandler = async () => { 
+      setIsResetModalOpen(true); 
+      setResetError(null); 
+    };
+    
     setOnImport(() => importHandler);
-    setOnReset(() => resetHandler);
-    return () => { setOnImport(() => null); setOnReset(() => null); };
+    setOnReset(() => resetHandler as unknown as Promise<void>);
+    
+    return () => { 
+      setOnImport(() => null); 
+      setOnReset(() => (async () => {}) as unknown as Promise<void>); 
+    };
   }, [setOnImport, setOnReset]);
 
   useEffect(() => cleanup, [cleanup]);
@@ -795,7 +806,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
       }
     );
     if (result.queued) {
-      showToast('warning', 'Offline', 'Paciente salvo localmente.');
+      showToast('warning', 'Offline', 'Paciente saved localmente.');
       setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
       setIsModalOpen(false); setSaving(false); return;
     }

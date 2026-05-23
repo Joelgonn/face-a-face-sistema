@@ -34,9 +34,9 @@ import { useSwipeSidebar } from '@/app/hooks/useSwipeSidebar';
 // ============================================================
 type DashboardActionsContextType = {
   onImport: (() => void) | null;
-  onReset: (() => void) | null;
+  onReset: (() => Promise<void>) | null;
   setOnImport: (fn: () => void) => void;
-  setOnReset: (fn: () => void) => void;
+  setOnReset: (fn: () => Promise<void>) => void;
 };
 
 const DashboardActionsContext = createContext<DashboardActionsContextType | null>(null);
@@ -49,7 +49,7 @@ export function useDashboardActions() {
 
 function DashboardActionsProvider({ children }: { children: React.ReactNode }) {
   const [onImport, setOnImport] = useState<(() => void) | null>(null);
-  const [onReset, setOnReset] = useState<(() => void) | null>(null);
+  const [onReset, setOnReset] = useState<(() => Promise<void>) | null>(null);
 
   return (
     <DashboardActionsContext.Provider value={{ onImport, onReset, setOnImport, setOnReset }}>
@@ -105,9 +105,19 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
     onClose?.();
   };
   
-  const handleReset = () => {
-    if (onReset) onReset();
-    onClose?.();
+  const handleReset = async () => {
+    try {
+      if (onReset) {
+        await onReset();
+      }
+
+      onClose?.();
+    } catch (error) {
+      console.error(
+        '[SIDEBAR] Erro ao executar reset:',
+        error
+      );
+    }
   };
   
   const navItems = [
@@ -139,6 +149,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
           </div>
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
               className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               aria-label="Fechar menu"
@@ -156,6 +167,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
             const isActive = currentPath === item.href || currentPath?.startsWith(item.href + '/');
             return (
               <button
+                type="button"
                 key={item.href}
                 onClick={() => { navigateTo(item.href); onClose?.(); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
@@ -176,6 +188,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
               const isActive = currentPath === item.href || currentPath?.startsWith(item.href + '/');
               return (
                 <button
+                  type="button"
                   key={item.href}
                   onClick={() => { navigateTo(item.href); onClose?.(); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
@@ -192,6 +205,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
 
         <div className="mt-auto pt-3 border-t border-gray-100 space-y-0.5">
           <button
+            type="button"
             onClick={handleImport}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-left"
           >
@@ -199,6 +213,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
             <span className="text-sm font-medium">Importar</span>
           </button>
           <button
+            type="button"
             onClick={handleReset}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-rose-50 hover:text-rose-600 transition-colors text-left"
           >
@@ -385,7 +400,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <WifiOff className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-red-700 mb-2">Você está offline</h2>
           <p className="text-red-600 mb-4">Conecte-se à internet para acessar o sistema.</p>
-          <button onClick={() => window.location.reload()} className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg">
+          <button 
+            type="button" 
+            onClick={() => window.location.reload()} 
+            className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg"
+          >
             Tentar novamente
           </button>
         </div>
@@ -431,6 +450,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <header className="bg-white border-b border-gray-200 sticky top-0 z-30 md:hidden">
             <div className="flex items-center justify-between px-4 py-3">
               <button
+                type="button"
                 onClick={() => {
                   navigator.vibrate?.(10);
                   setSidebarOpen(true);
@@ -447,6 +467,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="font-medium text-orange-600 text-sm">Face a Face</span>
               </div>
               <button
+                type="button"
                 onClick={() => goBack()}
                 className="p-2.5 rounded-lg hover:bg-gray-100 active:scale-95 transition"
                 aria-label="Voltar"
@@ -459,14 +480,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <main className="flex-1 p-4 md:p-6 overflow-x-hidden touch-pan-y">
             {readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
-                <Lock size={14} /><span className="flex-1"><strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.</span>
-                <button onClick={() => window.location.reload()} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded">Reconectar</button>
+                <Lock size={14} />
+                <span className="flex-1"><strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.</span>
+                <button 
+                  type="button" 
+                  onClick={() => window.location.reload()} 
+                  className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded"
+                >
+                  Reconectar
+                </button>
               </div>
             )}
             {degradedMode && !readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
-                <AlertTriangle size={14} /><span className="flex-1"><strong>Modo offline limitado</strong> — Alterações serão sincronizadas quando conectar.</span>
-                <button onClick={() => window.location.reload()} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded">Sincronizar</button>
+                <AlertTriangle size={14} />
+                <span className="flex-1"><strong>Modo offline limitado</strong> — Alterações serão sincronizadas quando conectar.</span>
+                <button 
+                  type="button" 
+                  onClick={() => window.location.reload()} 
+                  className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded"
+                >
+                  Sincronizar
+                </button>
               </div>
             )}
             {!isOnline && !degradedMode && !readOnlyMode && (
