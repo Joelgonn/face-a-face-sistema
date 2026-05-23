@@ -3,7 +3,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
-// Cliente Admin (Service Role)
+// ============================================================
+// 🔥 CLIENTE ADMIN (SERVICE ROLE)
+// ============================================================
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -15,95 +17,128 @@ const supabaseAdmin = createClient(
   }
 );
 
-export async function zerarSistemaCompleto(senhaDigitada: string) {
-  // --- VALIDAÇÃO DE CONFIGURAÇÃO CRÍTICA ---
+// ============================================================
+// 🔥 RESET COMPLETO DO SISTEMA
+// ============================================================
+export async function zerarSistemaCompleto(
+  senhaDigitada: string
+) {
+  // ============================================================
+  // 🔥 VALIDAÇÃO DE CONFIGURAÇÃO
+  // ============================================================
   if (!process.env.SYSTEM_RESET_PASSWORD) {
-    console.error('[RESET] ERRO CRÍTICO: SYSTEM_RESET_PASSWORD não configurada no ambiente');
-    return { 
-      success: false, 
-      message: 'Erro de configuração do sistema. Contate o administrador.' 
+    console.error(
+      '[RESET] ERRO CRÍTICO: SYSTEM_RESET_PASSWORD não configurada'
+    );
+
+    return {
+      success: false,
+      message:
+        'Erro de configuração do sistema. Contate o administrador.',
     };
   }
 
-  // 1. Valida a senha contra a variável de ambiente
-  if (senhaDigitada !== process.env.SYSTEM_RESET_PASSWORD) {
-    // --- LOG DE TENTATIVA INVÁLIDA ---
+  // ============================================================
+  // 🔥 VALIDAÇÃO DE SENHA
+  // ============================================================
+  if (
+    senhaDigitada !== process.env.SYSTEM_RESET_PASSWORD
+  ) {
     console.log('[RESET] Tentativa inválida', {
       data: new Date().toISOString(),
       sucesso: false,
-      motivo: 'senha incorreta'
+      motivo: 'senha incorreta',
     });
-    return { 
-      success: false, 
-      message: 'Senha administrativa incorreta. Ação negada.' 
+
+    return {
+      success: false,
+      message:
+        'Senha administrativa incorreta. Ação negada.',
     };
   }
 
   try {
-    // 2. Tenta usar a função RPC do banco
-    const { error: rpcError } = await supabaseAdmin.rpc('zerar_banco_completo');
+    // ============================================================
+    // 🔥 EXECUTA RESET SQL COMPLETO
+    // ============================================================
+    const { error: rpcError } =
+      await supabaseAdmin.rpc(
+        'zerar_banco_completo'
+      );
 
-    // --- FALLBACK MANUAL SE RPC FALHAR ---
+    // ============================================================
+    // 🔥 VALIDA ERRO RPC
+    // ============================================================
     if (rpcError) {
-      console.error('[RESET] RPC falhou, executando fallback manual...', rpcError);
-      
-      // Fallback: ordem importa (primeiro filhos, depois pais)
-      // --- VALIDAÇÃO DE ERRO EM CADA DELETE ---
-      
-      const del1 = await supabaseAdmin.from('historico_administracao').delete().neq('id', 0);
-      if (del1.error) {
-        throw new Error(`Falha ao deletar historico_administracao: ${del1.error.message}`);
-      }
-      
-      const del2 = await supabaseAdmin.from('prescricoes').delete().neq('id', 0);
-      if (del2.error) {
-        throw new Error(`Falha ao deletar prescricoes: ${del2.error.message}`);
-      }
-      
-      const del3 = await supabaseAdmin.from('encontristas').delete().neq('id', 0);
-      if (del3.error) {
-        throw new Error(`Falha ao deletar encontristas: ${del3.error.message}`);
-      }
-      
-      console.log('[RESET] Fallback manual executado com sucesso');
+      console.error(
+        '[RESET] Falha RPC zerar_banco_completo',
+        rpcError
+      );
+
+      throw new Error(
+        `Falha ao executar reset completo: ${rpcError.message}`
+      );
     }
 
-    // 3. VALIDAÇÃO PÓS-RESET: Garantir que o banco realmente foi zerado
-    const { count, error: countError } = await supabaseAdmin
+    // ============================================================
+    // 🔥 VALIDAÇÃO PÓS-RESET
+    // ============================================================
+    const {
+      count,
+      error: countError,
+    } = await supabaseAdmin
       .from('encontristas')
-      .select('*', { count: 'exact', head: true });
+      .select('*', {
+        count: 'exact',
+        head: true,
+      });
 
     if (countError) {
-      throw new Error(`Erro ao validar reset: ${countError.message}`);
+      throw new Error(
+        `Erro ao validar reset: ${countError.message}`
+      );
     }
 
     if (count && count > 0) {
-      throw new Error(`Reset falhou: ainda existem ${count} registros na tabela encontristas`);
+      throw new Error(
+        `Reset falhou: ainda existem ${count} registros na tabela encontristas`
+      );
     }
 
-    // --- LOG DE SUCESSO REAL ---
-    console.log('[RESET] Sucesso', {
+    // ============================================================
+    // 🔥 LOG DE SUCESSO
+    // ============================================================
+    console.log('[RESET] Sistema zerado com sucesso', {
       data: new Date().toISOString(),
       sucesso: true,
-      metodo: rpcError ? 'fallback_manual' : 'rpc'
+      metodo: 'rpc_truncate_restart_identity',
     });
 
-    // Revalida o cache do dashboard para atualizar a tela
+    // ============================================================
+    // 🔥 REVALIDA DASHBOARD
+    // ============================================================
     revalidatePath('/dashboard');
-    
-    return { success: true, message: 'Sistema zerado e IDs reiniciados com sucesso.' };
 
+    return {
+      success: true,
+      message:
+        'Sistema zerado e IDs reiniciados com sucesso.',
+    };
   } catch (error) {
-    // --- LOG DE ERRO DETALHADO ---
+    // ============================================================
+    // 🔥 LOG DE ERRO
+    // ============================================================
     console.error('[RESET] Falha na execução', {
       data: new Date().toISOString(),
       sucesso: false,
-      erro: (error as Error).message
+      erro: (error as Error).message,
     });
-    
-    return { 
-      success: false, 
-      message: 'Erro ao zerar banco: ' + (error as Error).message 
+
+    return {
+      success: false,
+      message:
+        'Erro ao zerar banco: ' +
+        (error as Error).message,
     };
   }
 }
