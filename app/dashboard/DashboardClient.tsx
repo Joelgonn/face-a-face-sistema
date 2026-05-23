@@ -37,15 +37,39 @@ const fastTransition: Transition = { duration: 0.18, ease: premiumEasing };
 const springTransition: Transition = { type: 'spring', stiffness: 350, damping: 28 };
 
 // --------------------------------------------------------------
-// 🔥 TIPO PARA STATUS EM CACHE
+// 🔥 TIPO PARA STATUS COM VERSÃO
 // --------------------------------------------------------------
-export type CachedStatus = {
-  texto: string;
-  prioridade: number;
-  cor: string;
-  bordaL: string;
-  icone: string;
+type StatusWithVersion = ReturnType<typeof calcularStatusPessoa> & {
+  _version: string;
 };
+
+// --------------------------------------------------------------
+// 🔥 CACHE DE STATUS PARA EVITAR RECÁLCULOS DESNECESSÁRIOS
+// --------------------------------------------------------------
+const statusCache = new Map<number, StatusWithVersion>();
+let statusCacheVersion = 0;
+
+function getCachedStatus(pessoa: EncontristaDashboard): StatusWithVersion {
+  const cacheKey = `${pessoa.id}-${pessoa.prescricoes?.length || 0}-${statusCacheVersion}`;
+  const cached = statusCache.get(pessoa.id);
+  
+  if (cached && cached._version === cacheKey) {
+    return cached;
+  }
+  
+  const status = calcularStatusPessoa(pessoa);
+  const statusWithVersion: StatusWithVersion = {
+    ...status,
+    _version: cacheKey
+  };
+  statusCache.set(pessoa.id, statusWithVersion);
+  return statusWithVersion;
+}
+
+function invalidateStatusCache() {
+  statusCacheVersion++;
+  statusCache.clear();
+}
 
 // --------------------------------------------------------------
 // 🔥 TIPO PARA O CACHE LEVE (SEM PRESCRIÇÕES)
@@ -58,14 +82,12 @@ export type ShrinkedEncontrista = {
   alergias: string | null;
   observacoes: string | null;
   created_at: string;
-  status: CachedStatus; // 👈 status pré-calculado
 };
 
 // --------------------------------------------------------------
-// 🔥 FUNÇÃO DE SHRINK (SALVA STATUS PRELIMINARMENTE)
+// 🔥 FUNÇÃO DE SHRINK
 // --------------------------------------------------------------
 function shrinkEncontristaForCache(p: EncontristaDashboard): ShrinkedEncontrista {
-  const status = calcularStatusPessoa(p);
   return {
     id: p.id,
     nome: p.nome,
@@ -74,18 +96,11 @@ function shrinkEncontristaForCache(p: EncontristaDashboard): ShrinkedEncontrista
     alergias: p.alergias,
     observacoes: p.observacoes,
     created_at: p.created_at,
-    status: {
-      texto: status.texto,
-      prioridade: status.prioridade,
-      cor: status.cor,
-      bordaL: status.bordaL,
-      icone: status.icone,
-    },
   };
 }
 
 // --------------------------------------------------------------
-// 🔥 FUNÇÃO DE EXPAND (RESTAURA STATUS DO CACHE)
+// 🔥 FUNÇÃO DE EXPAND
 // --------------------------------------------------------------
 function expandEncontristaFromCache(p: ShrinkedEncontrista): EncontristaDashboard {
   return {
@@ -96,53 +111,15 @@ function expandEncontristaFromCache(p: ShrinkedEncontrista): EncontristaDashboar
     alergias: p.alergias,
     observacoes: p.observacoes,
     created_at: p.created_at,
-    prescricoes: [], // continua leve
-    _cachedStatus: p.status, // 🔥 guarda para fallback
-  } as EncontristaDashboard & { _cachedStatus?: CachedStatus };
+    prescricoes: [],
+  } as EncontristaDashboard;
 }
 
 // --------------------------------------------------------------
-// 🔥 IS SAME DATA (COMPLETO)
+// 🔥 FUNÇÃO DE STATUS EM TEMPO REAL COM CACHE INTELIGENTE
 // --------------------------------------------------------------
-function isSameData(a: EncontristaDashboard[], b: EncontristaDashboard[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i];
-    const y = b[i];
-    if (
-      x.id !== y.id ||
-      x.check_in !== y.check_in ||
-      x.nome !== y.nome ||
-      x.responsavel !== y.responsavel ||
-      x.alergias !== y.alergias ||
-      x.observacoes !== y.observacoes
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// --------------------------------------------------------------
-// 🔥 FUNÇÃO DE STATUS COM FALLBACK PARA CACHE (AJUSTE CRÍTICO)
-// --------------------------------------------------------------
-function getStatusPessoaWithFallback(pessoa: EncontristaDashboard & { _cachedStatus?: CachedStatus }) {
-  // Se não tem prescrições, usa o status salvo no cache
-  if ((!pessoa.prescricoes || pessoa.prescricoes.length === 0) && pessoa._cachedStatus) {
-    const status = pessoa._cachedStatus;
-    return {
-      cor: status.cor,
-      bordaL: status.bordaL,
-      texto: status.texto,
-      prioridade: status.prioridade,
-      icone: status.icone === 'atrasado' ? <AlertTriangle size={16} /> :
-             status.icone === 'atencao' ? <Clock size={16} /> :
-             status.icone === 'emdia' ? <CheckCircle2 size={16} /> :
-             <Activity size={16} />
-    };
-  }
-  // Caso contrário, calcula normalmente
-  const status = calcularStatusPessoa(pessoa);
+function getStatusPessoaRealTime(pessoa: EncontristaDashboard) {
+  const status = getCachedStatus(pessoa);
   return {
     cor: status.cor,
     bordaL: status.bordaL,
@@ -180,7 +157,6 @@ export type EncontristaDashboard = EncontristaRow & {
   prescricoes: (Pick<PrescricaoRow, 'id' | 'posologia' | 'horario_inicial'> & {
     historico_administracao: Pick<HistoricoRow, 'data_hora'>[]
   })[];
-  _cachedStatus?: CachedStatus; // interno
 };
 
 interface ToastNotification {
@@ -242,7 +218,7 @@ function getQueueItemSummary(item: QueueItem) {
 
 export default function DashboardClient({ initialEncontristas, isAdminInitial }: DashboardClientProps) {
 
-  // 🔥 INICIALIZAÇÃO INSTANTÂNEA COM FAST CACHE (AGORA COM STATUS)
+  // 🔥 INICIALIZAÇÃO INSTANTÂNEA
   const [encontristas, setEncontristas] = useState<EncontristaDashboard[]>(() => {
     if (initialEncontristas.length > 0) return initialEncontristas;
     const cached = getFastCache<ShrinkedEncontrista[]>();
@@ -291,6 +267,9 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   const [isPending, startTransition] = useTransition();
   const [isNavigating, setIsNavigating] = useState(false);
 
+  // 🔥 CONTROLE DE FETCH PARA EVITAR DUPLICAÇÃO
+  const isFetchingRef = useRef(false);
+  const pendingFetchRef = useRef<NodeJS.Timeout | null>(null);
   const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fetchIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -316,7 +295,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   useEffect(() => cleanup, [cleanup]);
 
   // ============================================================
-  // PRECACHE DAS ROTAS (Service Worker)
+  // PRECACHE DAS ROTAS
   // ============================================================
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -326,7 +305,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, []);
 
   // ============================================================
-  // PRELOAD EM LOTE (NÃO BLOQUEANTE COM CANCELAMENTO)
+  // PRELOAD EM LOTE
   // ============================================================
   const CONCURRENCY = 5;
 
@@ -339,7 +318,6 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
           if (signal?.aborted) return;
           try {
             await preloadPacienteById(id);
-            console.log(`[CACHE] Paciente ${id} OK`);
           } catch (e) {
             console.warn(`[CACHE] erro ${id}`, e);
           }
@@ -366,7 +344,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, [encontristas, startPreload, markCacheReady]);
 
   // ============================================================
-  // CARREGAR DO INDEXEDDB (SÓ SE NÃO HOUVER FAST CACHE)
+  // CARREGAR DO INDEXEDDB
   // ============================================================
   useEffect(() => {
     const hasFastCache = (getFastCache<ShrinkedEncontrista[]>()?.length ?? 0) > 0;
@@ -386,11 +364,9 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
               prescricoes: []
             })) as EncontristaDashboard[];
 
-            setEncontristas(prev => {
-              if (isSameData(prev, mapped)) return prev;
-              // 🔥 SALVA VERSÃO ENCOLHIDA (COM STATUS)
+            setEncontristas(() => {
               saveFastCache(mapped.map(shrinkEncontristaForCache));
-              return mapped;
+              return [...mapped];
             });
           } else {
             setTimeout(loadOfflineDashboard, 1000);
@@ -405,7 +381,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, [initialEncontristas]);
 
   // ============================================================
-  // REVALIDAÇÃO SILENCIOSA (BACKGROUND SYNC)
+  // REVALIDAÇÃO SILENCIOSA
   // ============================================================
   useEffect(() => {
     if (!navigator.onLine) return;
@@ -414,10 +390,9 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
       const repo = createEncontristaRepository(supabaseClient);
       const { data } = await repo.findAll();
       if (data && data.length > 0) {
-        setEncontristas(prev => {
-          if (isSameData(prev, data)) return prev;
+        setEncontristas(() => {
           saveFastCache(data.map(shrinkEncontristaForCache));
-          return data;
+          return [...data];
         });
       }
     };
@@ -440,7 +415,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, [searchTerm]);
 
   // ============================================================
-  // NORMALIZAÇÃO, FILTRO, SORT (USANDO GET STATUS COM FALLBACK)
+  // NORMALIZAÇÃO COM useMemo OTIMIZADO
   // ============================================================
   const normalizedEncontristas = useMemo(() => {
     return encontristas.map(p => ({
@@ -479,31 +454,76 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   const totalAusentes = totalEncontristas - totalPresentes;
 
   // ============================================================
-  // BUSCAR ENCONTRISTAS (ONLINE)
+  // 🔥 BUSCAR ENCONTRISTAS COM CONTROLE DE DUPLICAÇÃO
   // ============================================================
-  const buscarEncontristas = useCallback(async () => {
+  const buscarEncontristas = useCallback(async (skipDedupe = false) => {
     if (isNavigating) return;
+    
+    // 🔥 PREVINE FETCH DUPLICADO
+    if (!skipDedupe && isFetchingRef.current) {
+      console.log('[DASHBOARD] Fetch já em andamento, agendando...');
+      if (pendingFetchRef.current) clearTimeout(pendingFetchRef.current);
+      pendingFetchRef.current = setTimeout(() => buscarEncontristas(true), 100);
+      return;
+    }
+    
+    if (pendingFetchRef.current) clearTimeout(pendingFetchRef.current);
+    isFetchingRef.current = true;
+    
     const fetchId = ++fetchIdRef.current;
     setLoading(true);
     const supabaseClient = createClient();
     const repo = createEncontristaRepository(supabaseClient);
     const { data, error } = await repo.findAll();
-    if (fetchId !== fetchIdRef.current) return;
+    
+    if (fetchId !== fetchIdRef.current) {
+      isFetchingRef.current = false;
+      return;
+    }
+    
     if (error) {
       console.error('[DASHBOARD] Erro:', error);
       showToast('error', 'Erro ao carregar', 'Não foi possível buscar os dados.');
       setLoading(false);
+      isFetchingRef.current = false;
       return;
     }
+    
     if (data) {
-      setEncontristas(prev => {
-        if (isSameData(prev, data)) return prev;
+      invalidateStatusCache(); // 🔥 INVALIDA CACHE DE STATUS
+      setEncontristas(() => {
         saveFastCache(data.map(shrinkEncontristaForCache));
-        return data;
+        return [...data];
       });
     }
+    
     setLoading(false);
+    isFetchingRef.current = false;
   }, [showToast, isNavigating]);
+
+  // ============================================================
+  // 🔥 ATUALIZAÇÃO PONTUAL (SEM RECARREGAR TUDO)
+  // ============================================================
+  const atualizarPacientePontual = useCallback((pacienteId: number) => {
+    console.log(`[DASHBOARD] Atualização pontual do paciente ${pacienteId}`);
+    invalidateStatusCache();
+    // Apenas invalida o cache, o Realtime vai trazer os dados novos
+    buscarEncontristas(true);
+  }, [buscarEncontristas]);
+
+  // ============================================================
+  // 🔥 REFRESH GLOBAL DE PACIENTE (APENAS EVENTO, SEM DUPLICAÇÃO)
+  // ============================================================
+  useEffect(() => {
+    const handlePacienteAtualizado = () => {
+      console.log('[DASHBOARD] Evento paciente-atualizado recebido');
+      clearFastCache();
+      atualizarPacientePontual(0); // 0 = atualiza todos
+    };
+
+    window.addEventListener('paciente-atualizado', handlePacienteAtualizado);
+    return () => window.removeEventListener('paciente-atualizado', handlePacienteAtualizado);
+  }, [atualizarPacientePontual]);
 
   // ============================================================
   // SINCRONIZAÇÃO OFFLINE
@@ -513,7 +533,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     const supabaseClient = createClient();
     const result = await syncEngine.process({ supabase: supabaseClient });
     updateQueueCount();
-    await buscarEncontristas();
+    await buscarEncontristas(true);
     if (result.total === 0) showToast('warning', 'Sincronização', 'Nenhum dado pendente');
     else if (result.falhas === 0) showToast('success', 'Sincronização completa', `${result.sucessos} itens enviados`);
     else showToast('warning', 'Sincronização parcial', `${result.falhas} itens pendentes`);
@@ -559,7 +579,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, [syncOfflineData]);
 
   // ============================================================
-  // INSTALL PROMPT E OUTROS
+  // INSTALL PROMPT
   // ============================================================
   useEffect(() => {
     const handler = (e: Event) => {
@@ -589,19 +609,13 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   // EVENTO DE REFRESH
   // ============================================================
   useEffect(() => {
-    const handleDashboardRefresh = () => buscarEncontristas();
+    const handleDashboardRefresh = () => buscarEncontristas(true);
     window.addEventListener('dashboard-refresh', handleDashboardRefresh);
     return () => window.removeEventListener('dashboard-refresh', handleDashboardRefresh);
   }, [buscarEncontristas]);
 
-  const debounceRefetch = useCallback(() => {
-    if (isNavigating) return;
-    if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current);
-    refetchTimeoutRef.current = setTimeout(() => buscarEncontristas(), 1000);
-  }, [buscarEncontristas, isNavigating]);
-
   // ============================================================
-  // REALTIME SUPABASE (COM STATUS PRÉ-CALCULADO)
+  // 🔥 REALTIME SUPABASE - APENAS UM CANAL, SEM DUPLICAÇÃO
   // ============================================================
   useEffect(() => {
     const channel = supabase
@@ -625,31 +639,69 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
 
           const newList = Array.from(map.values());
           saveFastCache(newList.map(shrinkEncontristaForCache));
+          invalidateStatusCache(); // 🔥 INVALIDA CACHE QUANDO DADOS MUDAM
           return newList;
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'prescricoes' }, () => debounceRefetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_administracao' }, () => debounceRefetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prescricoes' }, () => {
+        console.log('[REALTIME] Mudança em prescricoes');
+        invalidateStatusCache(); // 🔥 INVALIDA CACHE
+        buscarEncontristas(true); // 🔥 SEMPRE COM skipDedupe
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_administracao', filter: undefined }, () => {
+        console.log('[REALTIME] Mudança em historico_administracao');
+        invalidateStatusCache(); // 🔥 INVALIDA CACHE
+        buscarEncontristas(true); // 🔥 ATUALIZAÇÃO IMEDIATA E CONTROLADA
+      })
       .subscribe();
+      
     return () => {
-      if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current);
+      // 🔥 CORREÇÃO COMPLETA: capturar e limpar timeouts corretamente
+      const timeoutToClear = refetchTimeoutRef.current;
+      const pendingToClear = pendingFetchRef.current;
+      
+      refetchTimeoutRef.current = null;
+      pendingFetchRef.current = null;
+      
+      if (timeoutToClear) {
+        clearTimeout(timeoutToClear);
+      }
+      
+      if (pendingToClear) {
+        clearTimeout(pendingToClear);
+      }
+      
       supabase.removeChannel(channel);
     };
-  }, [supabase, debounceRefetch, isNavigating]);
+  }, [supabase, buscarEncontristas, isNavigating]);
 
   useEffect(() => {
     const currentFetchId = fetchIdRef.current;
     return () => {
-      if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current);
+      // 🔥 CORREÇÃO COMPLETA: capturar e limpar timeouts corretamente
+      const timeoutToClear = refetchTimeoutRef.current;
+      const pendingToClear = pendingFetchRef.current;
+      
+      refetchTimeoutRef.current = null;
+      pendingFetchRef.current = null;
+      
+      if (timeoutToClear) {
+        clearTimeout(timeoutToClear);
+      }
+      
+      if (pendingToClear) {
+        clearTimeout(pendingToClear);
+      }
+      
       fetchIdRef.current = currentFetchId + 1;
     };
   }, []);
 
   // ============================================================
-  // STATUS E HIGHLIGHT (USANDO A FUNÇÃO COM FALLBACK)
+  // 🔥 STATUS MAP OTIMIZADO COM CACHE INTELIGENTE
   // ============================================================
   const getStatusPessoa = useCallback((pessoa: EncontristaDashboard) => {
-    return getStatusPessoaWithFallback(pessoa as EncontristaDashboard & { _cachedStatus?: CachedStatus });
+    return getStatusPessoaRealTime(pessoa);
   }, []);
 
   useEffect(() => updateQueueCount(), [updateQueueCount]);
@@ -666,6 +718,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     }
   }, [searchTerm, encontristas]);
 
+  // 🔥 STATUS MAP COM CACHE
   const statusMap = useMemo(() => {
     const map = new Map();
     for (const pessoa of filtered) {
@@ -674,6 +727,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     return map;
   }, [filtered, getStatusPessoa]);
 
+  // 🔥 SORT OTIMIZADO - EVITA RECÁLCULOS DESNECESSÁRIOS
   const sorted = useMemo(() => {
     const term = debouncedSearch.trim();
     const isNumeric = /^\d+$/.test(term);
@@ -699,7 +753,11 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   };
   const connectionStatus = getConnectionStatus();
 
-  const reloadData = async () => { await buscarEncontristas(); showToast('success', 'Atualizado', 'Dados sincronizados com o servidor'); };
+  const reloadData = async () => { 
+    invalidateStatusCache();
+    await buscarEncontristas(true); 
+    showToast('success', 'Atualizado', 'Dados sincronizados com o servidor'); 
+  };
   const hardReload = () => window.location.reload();
 
   const requestCheckIn = (id: number, currentStatus: boolean, nome: string) => setCheckInTarget({ id, status: currentStatus, nome });
@@ -744,7 +802,10 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     if (!result.success) { showToast('warning', 'Atenção', result.error || 'Erro ao salvar'); setSaving(false); return; }
     showToast('success', 'Cadastrado!', `${novoNome} adicionado.`);
     setNovoNome(''); setNovoResponsavel(''); setNovasAlergias(''); setNovasObservacoes('');
-    setIsModalOpen(false); await buscarEncontristas(); setSaving(false);
+    setIsModalOpen(false); 
+    invalidateStatusCache();
+    await buscarEncontristas(true); 
+    setSaving(false);
   };
 
   const handleZerarSistema = async (e: React.FormEvent) => {
@@ -753,7 +814,9 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     setResetError(null); setIsResetting(true);
     const resultado = await zerarSistemaCompleto(resetPassword);
     if (resultado.success) {
-      queueService.clearQueue(); updateQueueCount(); clearFastCache(); await buscarEncontristas();
+      queueService.clearQueue(); updateQueueCount(); clearFastCache(); 
+      invalidateStatusCache();
+      await buscarEncontristas(true);
       setIsResetModalOpen(false); setResetPassword(''); setSelectedPatient(null);
       showToast('success', 'Sistema Zerado', 'Dados limpos com sucesso.');
     } else setResetError(resultado.message);
@@ -785,7 +848,11 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
           setImporting(false); setIsImportConfirmOpen(false); setFileToImport(null); return;
         }
         const result = await safeQuery(async () => await supabase.from('encontristas').insert(registros));
-        if (result) { showToast('success', 'Importação Concluída', `${registros.length} registros importados.`); await buscarEncontristas(); }
+        if (result) { 
+          showToast('success', 'Importação Concluída', `${registros.length} registros importados.`); 
+          invalidateStatusCache();
+          await buscarEncontristas(true); 
+        }
         else showToast('error', 'Falha na Importação', 'Nenhum dado foi importado.');
         setImporting(false); setIsImportConfirmOpen(false); setFileToImport(null);
       },
@@ -810,7 +877,7 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
   }, [navigateTo, waitForCache, isNavigating]);
 
   // ============================================================
-  // RENDER (JSX completo - inalterado)
+  // RENDER (JSX completo - mantido igual)
   // ============================================================
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white pb-24 overflow-x-hidden">

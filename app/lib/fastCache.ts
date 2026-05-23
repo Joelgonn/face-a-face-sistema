@@ -1,7 +1,7 @@
 'use client';
 
 const KEY = 'dashboard_fast_cache_v2'; // versionado
-const TTL = 1000 * 60 * 5; // 5 minutos
+const TTL = 1000 * 30; // 30 segundos (era 5 minutos)
 const MAX_SIZE_BYTES = 500_000; // ~0.5MB
 
 type CachePayload<T> = {
@@ -16,6 +16,9 @@ let lastPayload: string | null = null;
  * Salva cache de forma assíncrona, não-bloqueante e debounced.
  * Usa requestIdleCallback para não interferir na UI.
  * Previne dupla serialização e race condition.
+ * 
+ * IMPORTANTE: O cache NÃO inclui mais o status calculado (_cachedStatus).
+ * O status é sempre recalculado em tempo real para evitar informações desatualizadas.
  */
 export function saveFastCache<T>(data: T) {
   if (typeof window === 'undefined') return;
@@ -52,6 +55,9 @@ export function saveFastCache<T>(data: T) {
 
 /**
  * Recupera cache, respeitando TTL e ambiente.
+ * 
+ * ATENÇÃO: O cache recuperado NÃO contém mais o campo _cachedStatus.
+ * O status será recalculado em tempo real após a recuperação.
  */
 export function getFastCache<T>(): T | null {
   if (typeof window === 'undefined') return null;
@@ -62,7 +68,7 @@ export function getFastCache<T>(): T | null {
 
     const parsed: CachePayload<T> = JSON.parse(raw);
 
-    // Invalida se expirou
+    // Invalida se expirou (agora com TTL de 30 segundos)
     if (Date.now() - parsed.timestamp > TTL) {
       localStorage.removeItem(KEY);
       return null;

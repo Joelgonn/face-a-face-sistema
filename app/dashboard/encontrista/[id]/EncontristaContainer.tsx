@@ -15,6 +15,7 @@ import { Database } from '@/types/supabase'
 import { getPaciente, savePaciente } from '@/app/lib/offlineRepository'
 import { useOfflineNavigation } from '@/app/hooks/useOfflineNavigation'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { clearFastCache } from '@/app/lib/fastCache'
 
 // --- TIPAGEM ---
 type EncontristaRow = Database['public']['Tables']['encontristas']['Row']
@@ -255,6 +256,7 @@ export function EncontristaContainer({
 
   // ============================================================
   // ✅ CACHE DE PERFORMANCE: AGRUPAMENTO, STATUSMAP E LISTA VIRTUALIZADA
+  // 🔥 CORRIGIDO: DEPENDE DIRETAMENTE DE historico e medicacoes
   // ============================================================
   const { gruposMedicacoes, statusMap, listaVirtualizada } = useMemo(() => {
     const map = criarStatusMap(medicacoes, historico)
@@ -688,6 +690,7 @@ export function EncontristaContainer({
     setIsAdministerModalOpen(true)
   }, [historico])
 
+  // 🔥 FUNÇÃO REFATORADA DE ADMINISTRAÇÃO - CORREÇÕES CRÍTICAS
   const executarAdministracao = useCallback(async () => {
     if (!selectedPrescricao) return
     setSaving(true)
@@ -736,27 +739,49 @@ export function EncontristaContainer({
     if (result.queued) {
       alert('📱 Administração salva offline. Será sincronizada quando a internet voltar.')
       const offlineId = result.offlineId || gerarOfflineId().toString()
-      const novoHistorico: HistoricoItemComOffline = {
+      
+      // 🔥 CRÍTICO: CRIA NOVO HISTÓRICO COM REFERÊNCIA FRESCA E CAMPO OBRIGATÓRIO nome_medicamento_backup
+      const novoHistorico = {
         id: offlineIdParaNumero(offlineId),
         prescricao_id: selectedPrescricao.id,
         data_hora: dataHoraFixa,
         administrador: user?.email || 'offline',
+        nome_medicamento_backup: selectedPrescricao.nome_medicamento || '',
         prescricao: { nome_medicamento: selectedPrescricao.nome_medicamento, dosagem: selectedPrescricao.dosagem },
         _offline: true,
         _tempId: result.tempId,
         offline_id: offlineId,
         isOffline: true
-      } as HistoricoItemComOffline
+      } as unknown as HistoricoItemComOffline
       
-      const novoHistoricoLista = [novoHistorico, ...historico]
-      setHistorico(novoHistoricoLista)
+      // =====================================================
+      // 🔥 FORÇA NOVA REFERÊNCIA NO HISTÓRICO (CORREÇÃO #1)
+      // =====================================================
+      setHistorico(prev => [
+        novoHistorico,
+        ...prev
+      ]);
+      
+      // =====================================================
+      // 🔥 LIMPA CACHE VISUAL (CORREÇÃO #2)
+      // =====================================================
+      clearFastCache();
+      
+      // =====================================================
+      // 🔥 AVISA O DASHBOARD (CORREÇÃO #3)
+      // =====================================================
+      window.dispatchEvent(
+        new CustomEvent('paciente-atualizado')
+      );
       
       const medicacoesAtualizadas = medicacoes.map(med => {
         if (med.id === selectedPrescricao.id) return { ...med, ultima_administracao: dataHoraFixa, isOfflineUpdate: true } as PrescricaoComOffline
         return med
       })
       
-      setMedicacoes(ordenarMedicacoesComStatus(medicacoesAtualizadas, novoHistoricoLista))
+      setMedicacoes(
+        ordenarMedicacoesComStatus(medicacoesAtualizadas, [novoHistorico, ...historico])
+      )
       
       let pacienteAtualizado = paciente
       if (!paciente.check_in) {
@@ -764,13 +789,80 @@ export function EncontristaContainer({
         setPaciente(pacienteAtualizado)
       }
       
-      await savePaciente({ id: paciente.id, paciente: { ...pacienteAtualizado }, medicacoes: [...medicacoesAtualizadas], historico: [...novoHistoricoLista] })
+      // =====================================================
+      // 🔥 SALVA CACHE COM HISTÓRICO COMPLETO (CORREÇÃO #4)
+      // =====================================================
+      await savePaciente({ 
+        id: paciente.id, 
+        paciente: { ...pacienteAtualizado }, 
+        medicacoes: [...medicacoesAtualizadas], 
+        historico: [
+          novoHistorico,
+          ...historico
+        ] 
+      })
+      
       setIsAdministerModalOpen(false)
       setSelectedPrescricao(null)
     } else if (result.success) {
+      // CASO ONLINE - TAMBÉM APLICA AS CORREÇÕES
+      // =====================================================
+      // 🔥 CRIA O REGISTRO DE HISTÓRICO COM O CAMPO nome_medicamento_backup
+      // =====================================================
+      const novoHistoricoOnline = {
+        id: Date.now(), // ID temporário, será substituído pelo reload
+        prescricao_id: selectedPrescricao.id,
+        data_hora: dataHoraFixa,
+        administrador: user?.email || 'online',
+        nome_medicamento_backup: selectedPrescricao.nome_medicamento || '',
+        prescricao: { nome_medicamento: selectedPrescricao.nome_medicamento, dosagem: selectedPrescricao.dosagem },
+        created_at: new Date().toISOString()
+      } as unknown as HistoricoItemComOffline
+      
+      // FORÇA REFERÊNCIA FRESCA MESMO NO MODO ONLINE
+      setHistorico(prev => [
+        novoHistoricoOnline,
+        ...prev
+      ]);
+      
+      clearFastCache();
+      
+      window.dispatchEvent(
+        new CustomEvent('paciente-atualizado')
+      );
+      
+      const medicacoesAtualizadas = medicacoes.map(med => {
+        if (med.id === selectedPrescricao.id) return { ...med, ultima_administracao: dataHoraFixa } as PrescricaoComOffline
+        return med
+      })
+      
+      setMedicacoes(
+        ordenarMedicacoesComStatus(medicacoesAtualizadas, [novoHistoricoOnline, ...historico])
+      )
+      
+      let pacienteAtualizado = paciente
+      if (!paciente.check_in) {
+        pacienteAtualizado = { ...paciente, check_in: true }
+        setPaciente(pacienteAtualizado)
+      }
+      
+      await savePaciente({ 
+        id: paciente.id, 
+        paciente: { ...pacienteAtualizado }, 
+        medicacoes: [...medicacoesAtualizadas], 
+        historico: [
+          novoHistoricoOnline,
+          ...historico
+        ] 
+      })
+      
       setIsAdministerModalOpen(false)
       setSelectedPrescricao(null)
-      await reload()
+      
+      // Dispara reload em background para sincronizar com servidor
+      setTimeout(() => {
+        reload()
+      }, 100)
     } else {
       alert(`❌ ${result.error || 'Erro ao registrar administração'}`)
     }
@@ -856,7 +948,7 @@ export function EncontristaContainer({
     } else if (result.success) {
       setIsEditModalOpen(false)
       await reload()
-      alert('✅ Dados atualizados com sucesso!')
+      alert('✅ Dados updated com sucesso!')
     } else {
       alert(`❌ ${result.error || 'Erro ao salvar alterações'}`)
     }
