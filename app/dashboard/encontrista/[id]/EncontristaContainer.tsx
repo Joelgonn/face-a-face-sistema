@@ -274,7 +274,6 @@ export function EncontristaContainer({
     if (paciente?.id && paciente.id > 0) {
       const rotaAtual = `/dashboard/encontrista/${paciente.id}`
       prefetchAndCache(rotaAtual)
-      console.log(`[CACHE] Pré-cacheando rota atual: ${rotaAtual}`)
     }
   }, [paciente?.id, prefetchAndCache])
 
@@ -561,15 +560,7 @@ export function EncontristaContainer({
       realtimeChannelRef.current = null
     }
 
-    const channelName = `realtime-paciente-${paciente.id}`
-
-    console.log('[REALTIME][Encontrista] criando canal', {
-      pacienteId: paciente.id,
-      channel: channelName,
-      isOnline
-    })
-
-    const channel = supabase.channel(channelName)
+    const channel = supabase.channel(`realtime-paciente-${paciente.id}`)
 
     // Histórico: sem filtro SQL, filtro inteligente no cliente
     channel.on(
@@ -583,12 +574,6 @@ export function EncontristaContainer({
         const prescricaoId =
           (payload.new as HistoricoPayload)?.prescricao_id ||
           (payload.old as HistoricoPayload)?.prescricao_id
-
-        console.log('[TESTE][historico] Evento recebido', {
-          pacienteId: paciente.id,
-          prescricaoId,
-          payload
-        })
 
         if (!prescricaoId) return
 
@@ -610,14 +595,7 @@ export function EncontristaContainer({
       }
     )
 
-    channel.subscribe((status) => {
-      console.log('[REALTIME][Encontrista] channel status', {
-        pacienteId: paciente.id,
-        channel: channelName,
-        status
-      })
-    })
-
+    channel.subscribe()
     realtimeChannelRef.current = channel
 
     return () => {
