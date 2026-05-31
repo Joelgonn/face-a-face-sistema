@@ -11,6 +11,7 @@ import { deletarMedicacao } from '@/application/use-cases/deletarMedicacao'
 import { atualizarPaciente } from '@/application/use-cases/atualizarPaciente'
 import { deletarHistorico } from '@/application/use-cases/deletarHistorico'
 import { queueService } from '@/infra/offline/queue.service'
+import { syncEngine } from '@/infra/offline/sync.engine'
 import { Database } from '@/types/supabase'
 import { getPaciente, savePaciente } from '@/app/lib/offlineRepository'
 import { useOfflineNavigation } from '@/app/hooks/useOfflineNavigation'
@@ -503,6 +504,16 @@ export function EncontristaContainer({
     }
     setLoading(false)
   }, [paciente.id, supabase, isDegradedMode, medicacoes, historico, mergeMedicacoesComOffline, mergeHistoricoComOffline])
+
+  const syncOfflineData = useCallback(async () => {
+    if (queueService.getQueueCount() === 0) return
+
+    const result = await syncEngine.process({ supabase })
+
+    if (result.total > 0) {
+      await reload()
+    }
+  }, [reload, supabase])
 
   // ─────────────────────────────────────────────────────────
   // 🔥 DEBOUNCE DE RELOAD (estável, sem dependências voláteis)
@@ -1005,7 +1016,10 @@ export function EncontristaContainer({
   useEffect(() => {
     const online = navigator.onLine && !serverOffline
     setIsOnline(online)
-    const handleOnline = () => setIsOnline(true)
+    const handleOnline = () => {
+      setIsOnline(true)
+      void syncOfflineData()
+    }
     const handleOffline = () => setIsOnline(false)
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -1013,7 +1027,7 @@ export function EncontristaContainer({
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [serverOffline])
+  }, [serverOffline, syncOfflineData])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
