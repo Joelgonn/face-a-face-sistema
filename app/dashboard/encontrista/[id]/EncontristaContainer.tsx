@@ -561,7 +561,15 @@ export function EncontristaContainer({
       realtimeChannelRef.current = null
     }
 
-    const channel = supabase.channel(`realtime-paciente-${paciente.id}`)
+    const channelName = `realtime-paciente-${paciente.id}`
+
+    console.log('[REALTIME][Encontrista] criando canal', {
+      pacienteId: paciente.id,
+      channel: channelName,
+      isOnline
+    })
+
+    const channel = supabase.channel(channelName)
 
     // Histórico: sem filtro SQL, filtro inteligente no cliente
     channel.on(
@@ -572,11 +580,19 @@ export function EncontristaContainer({
         table: 'historico_administracao'
       },
       (payload: RealtimePostgresChangesPayload<HistoricoPayload>) => {
-        const prescricaoId = (payload.new as HistoricoPayload)?.prescricao_id || (payload.old as HistoricoPayload)?.prescricao_id
+        const prescricaoId =
+          (payload.new as HistoricoPayload)?.prescricao_id ||
+          (payload.old as HistoricoPayload)?.prescricao_id
+
+        console.log('[TESTE][historico] Evento recebido', {
+          pacienteId: paciente.id,
+          prescricaoId,
+          payload
+        })
+
         if (!prescricaoId) return
-        if (prescricaoIdsRef.current.has(prescricaoId)) {
-          reloadDebounced()
-        }
+
+        reloadDebounced()
       }
     )
 
@@ -594,7 +610,14 @@ export function EncontristaContainer({
       }
     )
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+      console.log('[REALTIME][Encontrista] channel status', {
+        pacienteId: paciente.id,
+        channel: channelName,
+        status
+      })
+    })
+
     realtimeChannelRef.current = channel
 
     return () => {

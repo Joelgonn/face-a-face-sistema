@@ -26,7 +26,7 @@ import { queueService } from '@/infra/offline/queue.service';
 import { syncEngine } from '@/infra/offline/sync.engine';
 import { QueueItem } from '@/domain/offline/queue.types';
 import { useOfflineNavigation } from '@/app/hooks/useOfflineNavigation';
-import { getAllPacientes, preloadPacienteById } from '@/app/lib/offlineRepository';
+import { getAllPacientes, hasRouteCache, preloadPacienteById } from '@/app/lib/offlineRepository';
 import { useDashboardActions } from './layout';
 import { useCacheGate } from '@/app/hooks/useCacheGate';
 import { getFastCache, saveFastCache, clearFastCache } from '@/app/lib/fastCache';
@@ -643,7 +643,17 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
           if (eventType === 'INSERT' && validatedNew) {
             map.set(validatedNew.id, validatedNew);
           } else if (eventType === 'UPDATE' && validatedNew && map.has(validatedNew.id)) {
-            map.set(validatedNew.id, { ...map.get(validatedNew.id)!, ...validatedNew });
+            const current = map.get(validatedNew.id)!;
+            const nextPrescricoes =
+              Array.isArray((newRow as { prescricoes?: unknown } | null | undefined)?.prescricoes)
+                ? validatedNew.prescricoes
+                : current.prescricoes;
+
+            map.set(validatedNew.id, {
+              ...current,
+              ...validatedNew,
+              prescricoes: nextPrescricoes,
+            });
           } else if (eventType === 'DELETE' && validatedOld?.id && map.has(validatedOld.id)) {
             map.delete(validatedOld.id);
           }
@@ -880,12 +890,25 @@ export default function DashboardClient({ initialEncontristas, isAdminInitial }:
     if (isNavigating) return;
     setIsNavigating(true);
     try {
-      if (!navigator.onLine) console.log('[OFFLINE] navegando direto');
-      else await waitForCache();
+      if (!navigator.onLine) {
+        const route = `/dashboard/encontrista/${id}`;
+        const hasCachedRoute = await hasRouteCache(route);
+
+        if (!hasCachedRoute) {
+          showToast(
+            'warning',
+            'Encontrista indisponível offline',
+            'Este encontrista ainda não foi preparado para acesso offline. Conecte-se à internet e tente novamente em alguns instantes.'
+          );
+          return;
+        }
+
+        console.log('[OFFLINE] rota disponível em cache, navegando');
+      } else await waitForCache();
       await navigateTo(`/dashboard/encontrista/${id}`);
     } catch (err) { console.error('[NAV] erro', err); }
     finally { setIsNavigating(false); }
-  }, [navigateTo, waitForCache, isNavigating]);
+  }, [navigateTo, waitForCache, isNavigating, showToast]);
 
   // ============================================================
   // RENDER (JSX completo - mantido igual)
