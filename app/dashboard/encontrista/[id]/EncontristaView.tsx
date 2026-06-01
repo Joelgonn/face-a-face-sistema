@@ -11,6 +11,10 @@ import { FixedSizeList } from 'react-window'
 // 🔥 IMPORTANDO TIPOS DO CONTAINER (ÚNICA FONTE DA VERDADE)
 import type { Prescricao, HistoricoItem, PrescricaoComOffline, ListaVirtualItem } from './EncontristaContainer'
 
+// 🔥 IMPORTAÇÕES DA CENTRAL DE AJUDA CONTEXTUAL
+import { HelpPopover } from '@/components/help/HelpPopover'
+import { contextHelp } from '@/data/context-help'
+
 // --- TIPAGEM LOCAL (apenas o que não vem do Container) ---
 type PacienteCompleto = {
   id: number
@@ -474,8 +478,14 @@ export function EncontristaView({
                   {paciente.alergias && (
                     <div className="flex items-start gap-3 p-3 bg-rose-50 rounded-xl border border-rose-100">
                       <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Alergias / Atenção</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1">
+                          <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Alergias / Atenção</p>
+                          <HelpPopover
+                            title={contextHelp.alergias.title}
+                            items={contextHelp.alergias.items}
+                          />
+                        </div>
                         <p className="text-sm font-semibold text-rose-700">{paciente.alergias}</p>
                       </div>
                     </div>
@@ -503,11 +513,17 @@ export function EncontristaView({
         {/* MEDICAÇÕES COM VIRTUALIZAÇÃO */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 overflow-hidden">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-slate-800 flex items-center gap-2">
-              <Pill className="text-orange-500" size={20} />
-              Medicações
-              <span className="text-xs text-slate-400 font-normal ml-2">({medicacoes.length})</span>
-            </h2>
+            <div className="flex items-center gap-1">
+              <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                <Pill className="text-orange-500" size={20} />
+                Medicações
+                <span className="text-xs text-slate-400 font-normal ml-2">({medicacoes.length})</span>
+              </h2>
+              <HelpPopover
+                title={contextHelp.medicacoes.title}
+                items={contextHelp.medicacoes.items}
+              />
+            </div>
             <button
               onClick={() => setIsModalOpen(true)}
               disabled={saving}
@@ -539,11 +555,17 @@ export function EncontristaView({
 
         {/* HISTÓRICO */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-          <h2 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-            <History className="text-blue-500" size={20} />
-            Histórico de Administração
-            <span className="text-xs text-slate-400 font-normal ml-2">({historico.length})</span>
-          </h2>
+          <div className="flex items-center gap-1 mb-4">
+            <h2 className="font-bold text-slate-800 flex items-center gap-2">
+              <History className="text-blue-500" size={20} />
+              Histórico de Administração
+              <span className="text-xs text-slate-400 font-normal ml-2">({historico.length})</span>
+            </h2>
+            <HelpPopover
+              title={contextHelp.historico.title}
+              items={contextHelp.historico.items}
+            />
+          </div>
 
           {historico.length === 0 ? (
             <p className="text-slate-400 text-sm italic text-center py-8">Nenhum registro de administração ainda.</p>
@@ -700,7 +722,13 @@ export function EncontristaView({
               <div className="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 size={28} className="text-emerald-600" />
               </div>
-              <h2 className="text-xl font-bold text-slate-800 mb-2">Confirmar Dose</h2>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <h2 className="text-xl font-bold text-slate-800">Confirmar Dose</h2>
+                <HelpPopover
+                  title={contextHelp.administracao.title}
+                  items={contextHelp.administracao.items}
+                />
+              </div>
               <p className="text-slate-500 text-sm mb-6">
                 Administrar <strong className="text-emerald-600">{selectedPrescricao.nome_medicamento}</strong> agora?
               </p>
@@ -819,7 +847,13 @@ export function EncontristaView({
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
               <div className="p-5 flex justify-between items-center border-b border-slate-100">
-                <h2 className="text-xl font-black text-orange-600">Editar Dados</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-black text-orange-600">Editar Dados</h2>
+                  <HelpPopover
+                    title={contextHelp.edicao.title}
+                    items={contextHelp.edicao.items}
+                  />
+                </div>
                 <button onClick={() => setIsEditModalOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200"><X size={18}/></button>
               </div>
               <form onSubmit={onUpdatePessoa} className="p-5 space-y-4">
