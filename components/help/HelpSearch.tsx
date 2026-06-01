@@ -31,10 +31,11 @@ export function HelpSearch({ onSearch }: HelpSearchProps) {
         value={searchTerm}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="Buscar na Central de Ajuda..."
-        className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg text-sm 
-                 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 
-                 placeholder-gray-400 bg-white transition-shadow
-                 hover:shadow-sm focus:shadow-md"
+        className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg text-sm
+                  text-gray-800
+                  focus:ring-2 focus:ring-orange-500 focus:border-orange-500
+                  placeholder-gray-400 bg-white transition-shadow
+                  hover:shadow-sm focus:shadow-md"
         aria-label="Buscar na Central de Ajuda"
       />
       
