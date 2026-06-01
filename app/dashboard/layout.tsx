@@ -15,7 +15,8 @@ import {
   Trash2,
   Menu,
   ArrowLeft,
-  Users
+  Users,
+  CircleHelp
 } from 'lucide-react';
 import { 
   saveLastUser, 
@@ -62,19 +63,27 @@ function DashboardActionsProvider({ children }: { children: React.ReactNode }) {
 // READ-ONLY MODE CONTEXT
 // ============================================================
 export const ReadOnlyContext = React.createContext<boolean>(false);
-export function useReadOnlyMode() { return React.useContext(ReadOnlyContext); }
+
+export function useReadOnlyMode() { 
+  return React.useContext(ReadOnlyContext); 
+}
+
 export function useIsOffline() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+  
   return isOffline;
 }
 
@@ -94,7 +103,9 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
   useEffect(() => {
     const updatePath = () => setCurrentPath(window.location.pathname);
     updatePath();
+    
     window.addEventListener('popstate', updatePath);
+    
     return () => {
       window.removeEventListener('popstate', updatePath);
     };
@@ -110,13 +121,9 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
       if (onReset) {
         await onReset();
       }
-
       onClose?.();
     } catch (error) {
-      console.error(
-        '[SIDEBAR] Erro ao executar reset:',
-        error
-      );
+      console.error('[SIDEBAR] Erro ao executar reset:', error);
     }
   };
   
@@ -125,6 +132,7 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
     { href: '/dashboard/equipe', label: 'Equipe', icon: Users, group: 'main' },
     { href: '/dashboard/relatorio', label: 'Relatórios', icon: FileText, group: 'secondary' },
     { href: '/dashboard/medicamentos', label: 'Farmácia', icon: Pill, group: 'secondary' },
+    { href: '/dashboard/ajuda', label: 'Ajuda', icon: CircleHelp, group: 'secondary' },
   ];
   
   const mainItems = navItems.filter(item => item.group === 'main');
@@ -142,8 +150,14 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
             <div>
               <h1 className="font-bold text-orange-600 text-sm">Face a Face</h1>
               <div className="flex items-center gap-1 mt-0.5">
-                {isOnline ? <Wifi size={10} className="text-emerald-500" /> : <WifiOff size={10} className="text-amber-500" />}
-                <span className="text-xs text-gray-500">{isOnline ? 'Online' : 'Offline'}</span>
+                {isOnline ? (
+                  <Wifi size={10} className="text-emerald-500" />
+                ) : (
+                  <WifiOff size={10} className="text-amber-500" />
+                )}
+                <span className="text-xs text-gray-500">
+                  {isOnline ? 'Online' : 'Offline'}
+                </span>
               </div>
             </div>
           </div>
@@ -165,13 +179,19 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
           {mainItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentPath === item.href || currentPath?.startsWith(item.href + '/');
+            
             return (
               <button
                 type="button"
                 key={item.href}
-                onClick={() => { navigateTo(item.href); onClose?.(); }}
+                onClick={() => { 
+                  navigateTo(item.href); 
+                  onClose?.(); 
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
-                  isActive ? 'bg-orange-50 text-orange-600' : 'text-gray-600 hover:bg-gray-100'
+                  isActive 
+                    ? 'bg-orange-50 text-orange-600' 
+                    : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 <Icon size={18} />
@@ -186,13 +206,19 @@ function Sidebar({ readOnlyMode, isOnline, onClose, navigateTo }: {
             {secondaryItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPath === item.href || currentPath?.startsWith(item.href + '/');
+              
               return (
                 <button
                   type="button"
                   key={item.href}
-                  onClick={() => { navigateTo(item.href); onClose?.(); }}
+                  onClick={() => { 
+                    navigateTo(item.href); 
+                    onClose?.(); 
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
-                    isActive ? 'bg-orange-50 text-orange-600' : 'text-gray-600 hover:bg-gray-100'
+                    isActive 
+                      ? 'bg-orange-50 text-orange-600' 
+                      : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   <Icon size={18} />
@@ -297,9 +323,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
+    
     setIsOnline(navigator.onLine);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -334,7 +363,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // Se obteve sessão online, autentica normalmente
       if (session?.user) {
         console.log('[DASHBOARD] Usuário autenticado:', session.user.email);
-        await saveLastUser(session.user.email || '', session.user.id, session.expires_at || (Date.now() + 3600000));
+        await saveLastUser(
+          session.user.email || '', 
+          session.user.id, 
+          session.expires_at || (Date.now() + 3600000)
+        );
         setIsAuthenticated(true);
         setDegradedMode(false);
         setReadOnlyMode(false);
@@ -399,7 +432,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md text-center">
           <WifiOff className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-red-700 mb-2">Você está offline</h2>
-          <p className="text-red-600 mb-4">Conecte-se à internet para acessar o sistema.</p>
+          <p className="text-red-600 mb-4">
+            Conecte-se à internet para acessar o sistema.
+          </p>
           <button 
             type="button" 
             onClick={() => window.location.reload()} 
@@ -420,7 +455,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* SIDEBAR DESKTOP – sempre visível, largura fixa w-64 */}
         <div className="hidden md:block">
-          <Sidebar readOnlyMode={readOnlyMode} isOnline={isOnline} navigateTo={navigateTo} />
+          <Sidebar 
+            readOnlyMode={readOnlyMode} 
+            isOnline={isOnline} 
+            navigateTo={navigateTo} 
+          />
         </div>
 
         {/* SIDEBAR MOBILE – wrapper com largura responsiva, animação e overlay */}
@@ -432,7 +471,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           `}
         >
-          <Sidebar readOnlyMode={readOnlyMode} isOnline={isOnline} navigateTo={navigateTo} onClose={() => setSidebarOpen(false)} />
+          <Sidebar 
+            readOnlyMode={readOnlyMode} 
+            isOnline={isOnline} 
+            navigateTo={navigateTo} 
+            onClose={() => setSidebarOpen(false)} 
+          />
         </div>
 
         {/* Overlay mobile com pointer-events correto */}
@@ -462,9 +506,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
               <div className="flex items-center gap-2">
                 <div className="bg-orange-100 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden">
-                  <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-cover" />
+                  <Image 
+                    src="/logo.png" 
+                    alt="Logo" 
+                    width={32} 
+                    height={32} 
+                    className="object-cover" 
+                  />
                 </div>
-                <span className="font-medium text-orange-600 text-sm">Face a Face</span>
+                <span className="font-medium text-orange-600 text-sm">
+                  Face a Face
+                </span>
               </div>
               <button
                 type="button"
@@ -481,7 +533,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
                 <Lock size={14} />
-                <span className="flex-1"><strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.</span>
+                <span className="flex-1">
+                  <strong>Modo leitura apenas</strong> — Conecte-se para fazer alterações.
+                </span>
                 <button 
                   type="button" 
                   onClick={() => window.location.reload()} 
@@ -494,7 +548,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {degradedMode && !readOnlyMode && (
               <div className="mb-4 bg-amber-500 text-white text-xs px-4 py-3 rounded-lg flex items-center gap-2">
                 <AlertTriangle size={14} />
-                <span className="flex-1"><strong>Modo offline limitado</strong> — Alterações serão sincronizadas quando conectar.</span>
+                <span className="flex-1">
+                  <strong>Modo offline limitado</strong> — Alterações serão sincronizadas quando conectar.
+                </span>
                 <button 
                   type="button" 
                   onClick={() => window.location.reload()} 
@@ -506,7 +562,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
             {!isOnline && !degradedMode && !readOnlyMode && (
               <div className="mb-4 bg-yellow-500 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-2">
-                <WifiOff size={14} /><span>Modo offline – alterações serão sincronizadas quando conectar</span>
+                <WifiOff size={14} />
+                <span>
+                  Modo offline – alterações serão sincronizadas quando conectar
+                </span>
               </div>
             )}
 
